@@ -1,0 +1,326 @@
+extends Node
+## Procedural techno/industrial AudioStreamWAV synthesizer, BPM/FFT music sync,
+## procedural SFX cues, and Pause/Restart-on-Death audio state machine.
+## [INDEPENDENT IMPLEMENTATION] Generates zero-crossing seamless loops with no external audio files.
+
+const SAMPLE_RATE := 22050
+const LOOP_BEATS := 4
+
+const TRACK_TEMPOS: Array[float] = [124.0, 128.0, 134.0, 138.0, 142.0, 148.0, 152.0]
+const TRACK_TITLES: PackedStringArray = [
+	"01 — Threshold Pulse (124 BPM)",
+	"02 — Spiral Drift (128 BPM)",
+	"03 — Vortex Engine (134 BPM)",
+	"04 — Deep Channel (138 BPM)",
+	"05 — Whiteout Glitch (142 BPM)",
+	"06 — Terminal Descent (148 BPM)",
+	"07 — Midnight Overdrive (152 BPM)",
+]
+
+const SCALE_NOTES_HZ: Array[Array] = [
+	[110.0, 130.81, 146.83, 164.81, 196.0, 220.0], # A minor
+	[98.0, 116.54, 130.81, 146.83, 174.61, 196.0], # G minor
+	[123.47, 146.83, 164.81, 185.0, 220.0, 246.94], # B minor
+	[130.81, 155.56, 174.61, 196.0, 233.08, 261.63], # C minor
+	[87.31, 103.83, 116.54, 130.81, 155.56, 174.61], # F minor
+	[110.0, 116.54, 146.83, 164.81, 174.61, 220.0], # A Phrygian industrial
+	[103.83, 123.47, 138.59, 155.56, 185.0, 207.65], # G# minor
+]
+
+var current_track_index: int = 0
+var current_bpm: float = 128.0
+var is_playing: bool = false
+var is_paused: bool = false
+var beat_phase: float = 0.0
+var beat_index: int = 0
+var bass_energy: float = 0.0
+var mid_energy: float = 0.0
+var high_energy: float = 0.0
+
+var _music_player: AudioStreamPlayer
+var _sfx_players: Array[AudioStreamPlayer] = []
+var _sfx_cursor: int = 0
+var _spectrum_inst: AudioEffectSpectrumAnalyzerInstance
+var _track_cache: Dictionary = {}
+var _sfx_cache: Dictionary = {}
+var _last_emitted_beat: int = -1
+var _synth_time: float = 0.0
+
+
+func _ready() -> void:
+	_ensure_audio_buses()
+	_music_player = AudioStreamPlayer.new()
+	_music_player.bus = &"Music"
+	add_child(_music_player)
+
+	for i in range(6):
+		var p := AudioStreamPlayer.new()
+		p.bus = &"SFX"
+		add_child(p)
+		_sfx_players.append(p)
+	call_deferred("_prewarm_initial_track")
+
+
+func _prewarm_initial_track() -> void:
+	get_or_build_track_stream(0, TRACK_TEMPOS[0])
+
+
+func _process(delta: float) -> void:
+	if not is_playing or is_paused:
+		bass_energy = lerpf(bass_energy, 0.0, clampf(delta * 8.0, 0.0, 1.0))
+		mid_energy = lerpf(mid_energy, 0.0, clampf(delta * 8.0, 0.0, 1.0))
+		high_energy = lerpf(high_energy, 0.0, clampf(delta * 8.0, 0.0, 1.0))
+		return
+
+	_synth_time += delta
+	var play_pos := _synth_time
+	if _music_player != null and _music_player.playing and _music_player.stream != null and DisplayServer.get_name() != "headless":
+		play_pos = _music_player.get_playback_position() + AudioServer.get_time_since_last_mix()
+
+	var beats_per_sec := current_bpm / 60.0
+	var total_beats := play_pos * beats_per_sec
+	beat_index = int(floor(total_beats))
+	beat_phase = total_beats - float(beat_index)
+
+	if beat_index != _last_emitted_beat:
+		_last_emitted_beat = beat_index
+		GameEvents.beat_pulse.emit(beat_index, beat_phase)
+
+	if _spectrum_inst != null and DisplayServer.get_name() != "headless":
+		var b := _spectrum_inst.get_magnitude_for_frequency_range(20.0, 150.0).length()
+		var m := _spectrum_inst.get_magnitude_for_frequency_range(150.0, 2200.0).length()
+		var h := _spectrum_inst.get_magnitude_for_frequency_range(2200.0, 12000.0).length()
+		bass_energy = clampf(b * 6.5, 0.0, 1.0)
+		mid_energy = clampf(m * 8.0, 0.0, 1.0)
+		high_energy = clampf(h * 10.0, 0.0, 1.0)
+	else:
+		bass_energy = pow(maxf(0.0, 1.0 - beat_phase * 2.2), 2.0)
+		mid_energy = 0.5 + 0.5 * sin(total_beats * PI)
+		high_energy = 0.35 + 0.35 * sin(total_beats * TAU * 2.0)
+
+
+func start_track(track_idx: int, bpm_override: float = -1.0, force_restart: bool = true) -> void:
+	var idx := posmod(track_idx, TRACK_TEMPOS.size())
+	var bpm_val := bpm_override if bpm_override > 0.0 else TRACK_TEMPOS[idx]
+	if not force_restart and is_playing and current_track_index == idx and is_equal_approx(current_bpm, bpm_val):
+		is_paused = false
+		if _music_player != null:
+			_music_player.stream_paused = false
+		return
+
+	current_track_index = idx
+	current_bpm = bpm_val
+	_synth_time = 0.0
+	_last_emitted_beat = -1
+	is_playing = true
+	is_paused = false
+
+	var stream := get_or_build_track_stream(idx, bpm_val)
+	if _music_player != null:
+		_music_player.stream = stream
+		_music_player.stream_paused = false
+		if DisplayServer.get_name() != "headless":
+			_music_player.play()
+
+
+func select_random_track() -> int:
+	var next_idx := (current_track_index + 1 + randi() % maxi(1, TRACK_TEMPOS.size() - 1)) % TRACK_TEMPOS.size()
+	start_track(next_idx, -1.0, true)
+	return next_idx
+
+
+func on_player_death() -> void:
+	if SettingsManager.pause_on_death:
+		is_paused = true
+		if _music_player != null:
+			_music_player.stream_paused = true
+
+
+func on_retry() -> void:
+	if SettingsManager.random_track:
+		select_random_track()
+		return
+	if SettingsManager.restart_song_on_death:
+		start_track(current_track_index, current_bpm, true)
+		return
+	is_paused = false
+	if _music_player != null:
+		_music_player.stream_paused = false
+
+
+func stop_music() -> void:
+	is_playing = false
+	is_paused = false
+	if _music_player != null:
+		_music_player.stop()
+
+
+func play_sfx(cue_name: String) -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	var stream := get_or_build_sfx_stream(cue_name)
+	if stream == null or _sfx_players.is_empty():
+		return
+	var p := _sfx_players[_sfx_cursor]
+	_sfx_cursor = (_sfx_cursor + 1) % _sfx_players.size()
+	p.stream = stream
+	p.play()
+
+
+func get_or_build_track_stream(track_idx: int, bpm_override: float = -1.0) -> AudioStreamWAV:
+	var idx := posmod(track_idx, TRACK_TEMPOS.size())
+	var bpm_val := bpm_override if bpm_override > 0.0 else TRACK_TEMPOS[idx]
+	var cache_key := "%d_%.1f" % [idx, bpm_val]
+	if _track_cache.has(cache_key):
+		return _track_cache[cache_key] as AudioStreamWAV
+
+	var beat_sec := 60.0 / bpm_val
+	var total_samples := int(round(float(LOOP_BEATS) * beat_sec * float(SAMPLE_RATE)))
+	var pcm := PackedByteArray()
+	pcm.resize(total_samples * 2)
+
+	var scale: Array = SCALE_NOTES_HZ[idx]
+	var arp_order := [0, 2, 4, 5, 3, 2, 1, 4]
+	var bass_phase := 0.0
+	var arp_phase := 0.0
+	var noise_state := 1337 + idx * 97
+	const FADE_SAMPLES := 48
+
+	for i in range(total_samples):
+		var t_sec := float(i) / float(SAMPLE_RATE)
+		var beat_pos := t_sec / beat_sec
+		var beat_frac := fmod(beat_pos, 1.0)
+		var sixteenth_idx := int(floor(beat_pos * 4.0))
+		var sixteenth_frac := fmod(beat_pos * 4.0, 1.0)
+
+		# 1) Punchy four-on-the-floor techno kick
+		var kick_freq := 46.0 + 130.0 * exp(-beat_frac * 28.0)
+		var kick_env := exp(-beat_frac * 7.5)
+		var kick := sin(TAU * kick_freq * beat_frac * beat_sec) * kick_env * 0.56
+
+		# 2) Sidechained rolling sub-bassline
+		var root_hz := float(scale[0]) * 0.5
+		if (int(floor(beat_pos)) % 4) >= 2:
+			root_hz = float(scale[2]) * 0.5
+		bass_phase += root_hz / float(SAMPLE_RATE)
+		var sidechain := clampf(beat_frac * 3.2, 0.12, 1.0)
+		var bass_saw := (fmod(bass_phase, 1.0) * 2.0 - 1.0) * 0.6 + sin(TAU * bass_phase) * 0.4
+		var bass := bass_saw * sidechain * 0.28
+
+		# 3) Driving 16th-note rave arpeggio
+		var note_hz := float(scale[int(arp_order[(sixteenth_idx + idx) % arp_order.size()])]) * 2.0
+		arp_phase += note_hz / float(SAMPLE_RATE)
+		var arp_env := exp(-sixteenth_frac * 5.2)
+		var arp := (1.0 if fmod(arp_phase, 1.0) < 0.35 else -1.0) * arp_env * 0.16
+
+		# 4) Off-beat crisp hi-hat (deterministic LCG noise)
+		noise_state = (noise_state * 1103515245 + 12345) & 0x7FFFFFFF
+		var white := (float(noise_state % 2000) / 1000.0) - 1.0
+		var hat_env := exp(-fmod(beat_pos + 0.5, 1.0) * 26.0)
+		var hat := white * hat_env * 0.12
+
+		var mixed := tanh((kick + bass + arp + hat) * 1.15) * 0.85
+
+		# Smooth zero-crossing edge envelope guarantees zero click/crackle at loop seam
+		if i < FADE_SAMPLES:
+			var w := 0.5 - 0.5 * cos(PI * float(i) / float(FADE_SAMPLES))
+			mixed *= w
+		elif i >= total_samples - FADE_SAMPLES:
+			var rem := total_samples - 1 - i
+			var w := 0.5 - 0.5 * cos(PI * float(rem) / float(FADE_SAMPLES))
+			mixed *= w
+
+		var s16 := clampi(int(round(mixed * 32767.0)), -32768, 32767)
+		pcm.encode_s16(i * 2, s16)
+
+	var wav := AudioStreamWAV.new()
+	wav.format = AudioStreamWAV.FORMAT_16_BITS
+	wav.mix_rate = SAMPLE_RATE
+	wav.stereo = false
+	wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	wav.loop_begin = 0
+	wav.loop_end = total_samples
+	wav.data = pcm
+	_track_cache[cache_key] = wav
+	return wav
+
+
+func get_or_build_sfx_stream(cue_name: String) -> AudioStreamWAV:
+	if _sfx_cache.has(cue_name):
+		return _sfx_cache[cue_name] as AudioStreamWAV
+
+	var dur := 0.18
+	var f0 := 520.0
+	var f1 := 880.0
+	var is_noise := false
+	match cue_name:
+		"graze_1":
+			dur = 0.11; f0 = 560.0; f1 = 760.0
+		"graze_2":
+			dur = 0.15; f0 = 720.0; f1 = 1080.0
+		"graze_3":
+			dur = 0.22; f0 = 880.0; f1 = 1520.0
+		"checkpoint":
+			dur = 0.16; f0 = 440.0; f1 = 880.0
+		"clear":
+			dur = 0.42; f0 = 523.25; f1 = 1046.5
+		"death":
+			dur = 0.34; f0 = 190.0; f1 = 38.0; is_noise = true
+		"ui_click":
+			dur = 0.05; f0 = 640.0; f1 = 420.0
+		_:
+			dur = 0.10; f0 = 480.0; f1 = 620.0
+
+	var total := int(round(dur * float(SAMPLE_RATE)))
+	var pcm := PackedByteArray()
+	pcm.resize(total * 2)
+	var phase := 0.0
+	var n_state := 9187
+
+	for i in range(total):
+		var u := float(i) / float(maxi(1, total - 1))
+		var freq := lerpf(f0, f1, u)
+		phase += freq / float(SAMPLE_RATE)
+		var env := sin(PI * minf(1.0, u * 6.0)) * exp(-u * 4.5)
+		var sig := sin(TAU * phase)
+		if is_noise:
+			n_state = (n_state * 1103515245 + 12345) & 0x7FFFFFFF
+			var w := (float(n_state % 2000) / 1000.0) - 1.0
+			sig = sig * 0.55 + w * 0.45
+		var val := sig * env * 0.65
+		pcm.encode_s16(i * 2, clampi(int(round(val * 32767.0)), -32768, 32767))
+
+	var wav := AudioStreamWAV.new()
+	wav.format = AudioStreamWAV.FORMAT_16_BITS
+	wav.mix_rate = SAMPLE_RATE
+	wav.stereo = false
+	wav.loop_mode = AudioStreamWAV.LOOP_DISABLED
+	wav.data = pcm
+	_sfx_cache[cue_name] = wav
+	return wav
+
+
+func _ensure_audio_buses() -> void:
+	if AudioServer.get_bus_index(&"Music") < 0:
+		var idx := AudioServer.bus_count
+		AudioServer.add_bus(idx)
+		AudioServer.set_bus_name(idx, &"Music")
+		AudioServer.set_bus_send(idx, &"Master")
+	if AudioServer.get_bus_index(&"SFX") < 0:
+		var idx := AudioServer.bus_count
+		AudioServer.add_bus(idx)
+		AudioServer.set_bus_name(idx, &"SFX")
+		AudioServer.set_bus_send(idx, &"Master")
+
+	var music_idx := AudioServer.get_bus_index(&"Music")
+	if music_idx >= 0:
+		var has_spec := false
+		for i in range(AudioServer.get_bus_effect_count(music_idx)):
+			if AudioServer.get_bus_effect(music_idx, i) is AudioEffectSpectrumAnalyzer:
+				has_spec = true
+				_spectrum_inst = AudioServer.get_bus_effect_instance(music_idx, i) as AudioEffectSpectrumAnalyzerInstance
+				break
+		if not has_spec:
+			var spec := AudioEffectSpectrumAnalyzer.new()
+			AudioServer.add_bus_effect(music_idx, spec, 0)
+			_spectrum_inst = AudioServer.get_bus_effect_instance(music_idx, 0) as AudioEffectSpectrumAnalyzerInstance

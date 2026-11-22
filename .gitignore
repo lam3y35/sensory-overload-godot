@@ -1,0 +1,16 @@
+# Godot 4 cache & imports
+.godot/
+*.import
+
+# Build artifacts & standalone executables
+builds/
+
+# Local GPU visual QA captures (curated showcase shots live in docs/screenshots/)
+qa_screenshots/
+
+# Backups & OS/Python artifacts
+*.bak
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db

@@ -314,6 +314,12 @@ func get_or_build_sfx_stream(cue_name: String) -> AudioStreamWAV:
 			dur = 0.36; f0 = 440.0; f1 = 1100.0; mode = "arpeggio"
 		"boost_on":
 			dur = 0.20; f0 = 220.0; f1 = 740.0; is_noise = true
+		"phase_dash":
+			dur = 0.16; f0 = 880.0; f1 = 1760.0; mode = "chord"
+		"phase_parry":
+			dur = 0.28; f0 = 587.33; f1 = 1760.0; mode = "arpeggio"; is_noise = true
+		"section_up":
+			dur = 0.26; f0 = 440.0; f1 = 660.0; mode = "chord"
 		"whoosh":
 			dur = 0.14; f0 = 320.0; f1 = 110.0; is_noise = true; mode = "air"
 		"checkpoint":

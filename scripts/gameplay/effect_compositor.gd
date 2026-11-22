@@ -46,6 +46,10 @@ func apply_effects(
 
 	var speed_lines_on := EffectCatalog.has_effect(eff_mask, 11) and SettingsManager.speed_lines_enabled
 	var effective_boost := clampf(boost_level, 0.0, 1.0) if SettingsManager.speed_lines_enabled else clampf(boost_level * 0.25, 0.0, 0.25)
+	var has_screen_fx := ((eff_mask & (~((1 << 11) - 1))) != 0) or boost_level > 0.01 or flash_strength > 0.01
+	_rect.visible = has_screen_fx
+	if not has_screen_fx:
+		return
 	_mat.set_shader_parameter("u_time", elapsed_time)
 	_mat.set_shader_parameter("u_speed", speed)
 	_mat.set_shader_parameter("u_beat_phase", beat_phase)

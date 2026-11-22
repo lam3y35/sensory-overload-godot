@@ -1,7 +1,7 @@
 class_name CrosshairDrawer
 extends Control
 ## Precision eye-centered cyber-HUD reticle displaying live Flow Lock arc,
-## Boost/Chain crescent, and normalized tunnel margin indicator around the aim point.
+## Boost/Chain crescent, cockpit tunnel-margin indicator, and Phase Dash diamond readiness.
 
 var preview_mode: bool = false
 var show_telemetry: bool = false
@@ -12,6 +12,8 @@ var chain_mult: float = 1.0
 var boost_ratio: float = 0.0
 var beat_kick: float = 0.0
 var tunnel_pos_norm: Vector2 = Vector2.ZERO
+var phase_ready_ratio: float = 1.0
+var phase_active: bool = false
 
 
 func _ready() -> void:
@@ -26,7 +28,9 @@ func update_telemetry(
 	p_chain_mult: float,
 	p_boost_ratio: float,
 	p_beat_kick: float,
-	p_tunnel_norm: Vector2
+	p_tunnel_norm: Vector2,
+	p_phase_ready: float = 1.0,
+	p_phase_active: bool = false
 ) -> void:
 	show_telemetry = true
 	flow_ratio = clampf(p_flow, 0.0, 1.0)
@@ -36,6 +40,8 @@ func update_telemetry(
 	boost_ratio = clampf(p_boost_ratio, 0.0, 1.0)
 	beat_kick = clampf(p_beat_kick, 0.0, 1.0)
 	tunnel_pos_norm = p_tunnel_norm
+	phase_ready_ratio = clampf(p_phase_ready, 0.0, 1.0)
+	phase_active = p_phase_active
 	queue_redraw()
 
 
@@ -68,6 +74,25 @@ func _draw() -> void:
 		if left_fill > 0.01:
 			var b_col := Color("facc15") if boost_ratio > 0.15 else Color("ff2e93")
 			draw_arc(c, arc_r, PI + 0.78, lerpf(PI + 0.78, PI - 0.78, left_fill), 18, b_col, 2.8)
+
+		# Bottom Phase Dash diamond readiness gauge
+		var dp := c + Vector2(0.0, arc_r + 10.0)
+		var dr := 5.2 + (2.0 if phase_active else (1.0 * beat_kick if phase_ready_ratio >= 0.99 else 0.0))
+		var pts := PackedVector2Array([
+			dp + Vector2(0.0, -dr),
+			dp + Vector2(dr, 0.0),
+			dp + Vector2(0.0, dr),
+			dp + Vector2(-dr, 0.0),
+		])
+		if phase_active:
+			draw_colored_polygon(pts, Color("facc15"))
+			draw_polyline(PackedVector2Array([pts[0], pts[1], pts[2], pts[3], pts[0]]), Color.WHITE, 1.8)
+		elif phase_ready_ratio >= 0.99:
+			draw_colored_polygon(pts, Color("14f1d9"))
+			draw_polyline(PackedVector2Array([pts[0], pts[1], pts[2], pts[3], pts[0]]), Color(0.0, 0.0, 0.0, 0.85), 1.4)
+		else:
+			draw_colored_polygon(pts, Color(0.06, 0.05, 0.14, 0.7))
+			draw_arc(dp, dr + 1.5, -PI * 0.5, -PI * 0.5 + TAU * phase_ready_ratio, 16, Color("38bdf8"), 2.0)
 
 	match shape:
 		SettingsManager.CrosshairShape.DOT:

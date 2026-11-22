@@ -17,6 +17,7 @@ func run_suite(runner: Node) -> Dictionary:
 	_test_practice_checkpoints(runner)
 	_test_ranked_speed_escalation_and_lap(runner)
 	_test_boost_and_energy_rings(runner)
+	_test_phase_dash_parry_and_decoupled_sync(runner)
 	_test_delayed_death_freeze(runner)
 	return {"passed": _passed, "failed": _failed}
 
@@ -161,6 +162,30 @@ func _test_boost_and_energy_rings(runner: Node) -> void:
 	var r_pts := gs.scoring.register_ring(str(res["id"]), false)
 	_assert_true(r_pts >= 300 and gs.scoring.rings_collected == 1 and gs.scoring.streak == prev_streak + 1,
 		"Ring collection awards >= 300 base pts, increments rings_collected, and builds streak")
+	gs.queue_free()
+
+
+func _test_phase_dash_parry_and_decoupled_sync(runner: Node) -> void:
+	var st := _build_two_section_test_stage(25.0)
+	var gs := GameSession.new()
+	runner.add_child(gs)
+	gs.start_session({"stage_data": st, "mode": ScoringManager.MODE_NORMAL})
+
+	# Place player just above lethal cross_bars at 25m and trigger Phase Blink
+	gs.player.reset_at(22.0, Vector2.ZERO)
+	gs.spawn_grace_timer = 0.0
+	var dashed := gs.trigger_phase_blink(Vector2.RIGHT)
+	_assert_true(dashed and gs.player.is_phase_invulnerable() and gs.player.get_phase_ready_ratio() < 0.1,
+		"Phase Dash triggers invulnerability window and starts recharge cooldown")
+
+	# Step with decoupled logic (sync_visuals=false) straight through the obstacle -> must Phase Parry instead of dying
+	for _i in range(12):
+		gs.step_simulation(0.01, false)
+	gs.sync_visual_frame(0.016)
+	_assert_true(gs.state == GameSession.SessionState.PLAYING and gs.scoring.phase_parries >= 1 and gs.scoring.score >= 800,
+		"Phase Blink through lethal obstacle triggers PHASE PARRY (+800+ pts) cleanly without dying")
+	_assert_true(gs.player.get_phase_ready_ratio() >= 0.99,
+		"Phase Parry refreshes Phase Dash cooldown immediately for aggressive chain flow")
 	gs.queue_free()
 
 

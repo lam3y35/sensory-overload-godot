@@ -101,3 +101,16 @@ Following user playtest feedback (*"boring, glitchy, not enjoyable, not attentio
   - **Collectible Energy Rings ([`scripts/gameplay/ring_manager.gd`](../scripts/gameplay/ring_manager.gd)):** Safe-corridor neon hoops awarding `+300 * Chain` pts, streak, Flow surge, burst sparks, FOV punch, and rising synth chimes.
   - **Procedural Cyber-Synthwave Audio (`audio_sync_manager.gd`):** Upgraded loops to 8 beats with LP-filtered basslines, detuned chord pads, soft plucked arpeggios, snare/hat grooves, Main Menu ambient groove, and pitch-escalating `ring`, `whoosh`, `boost_on`, and `flow_lock` cues.
   - **Zero-Friction HUD & Menu Flow:** Added `▶ PLAY NOW (QUICK DIVE)` on `MainMenu`, eye-centered reticle Flow/Boost/margin arcs (`CrosshairDrawer`), animated score popups (`GameHUD`), `S+`–`C` rank badges, `Next Stage (Enter)`, and `Space` instant retry on `DeathOverlay`.
+
+---
+
+## 5. `v3.0.0` GPU/CPU Performance, Phase Dash & 60s Hook Trailer Release
+
+- **Hardware & CPU Performance Gains:**
+  - Added pure opaque hardware Early-Z shader ([`shaders/obstacle_opaque.gdshader`](../shaders/obstacle_opaque.gdshader)) eliminating translucent overdraw for solid obstacles, plus fixed crimson-orange impact alerts across both obstacle shaders (`* 1.02` instead of HDR yellow blowout).
+  - Pooled inactive `MeshInstance3D` + material pairs in [`obstacle_manager.gd`](../scripts/gameplay/obstacle_manager.gd) (`_free_meshes` free-list), converted [`tunnel_renderer.gd`](../scripts/gameplay/tunnel_renderer.gd) to modulo ring-buffer delta writes (`16–32` instances vs. `1,024` per ring shift), rewrote [`ring_manager.gd`](../scripts/gameplay/ring_manager.gd) into 1 pooled MultiMesh draw call (`192` instances max), skipped idle full-screen post-FX passes in [`effect_compositor.gd`](../scripts/gameplay/effect_compositor.gd), and decoupled 120 Hz logic sub-stepping from once-per-frame GPU sync in [`game_session.gd`](../scripts/gameplay/game_session.gd).
+  - **Measured Results:** `1.05 ms/frame` average CPU render time over `3,601` frames at `1920x1080` (`tools/build_trailer.py` source Movie-Maker capture); `60.0 FPS` steady in full 10-FX Ranked Sensory Overload (`qa_screenshots/v3/qa_metrics.json`, up from `34.0 FPS` in `v2`); `106/106` headless tests passing across `6` suites; `9/9` live GPU checks `true` with `0` overlap warnings.
+- **Pure Arcade Joy (`Phase Blink` & `Phase Parry`):**
+  - Bound to `Right Click` / `E`, granting `0.16 s` invulnerability dash frames (`PHASE_IMPULSE_M = 4.4 m`), `26 ms` tactical hit-stop, **PHASE PARRY! (`+800 * Chain`)** milestone callout, instant cooldown reset on parry / Energy Ring / Death Wish graze, leaner `0.27 m` live collision core, milestone announcements (`4.0x`, `6.0x`, `8.0x`, `SECTION 2/3`), and eye-centered Phase Diamond UI gauge.
+- **60-Second Hook Ad Video (`media/SensoryOverload_60s_Trailer.mp4`):**
+  - Choreographed `3,601`-frame GPU capture (`tests/trailer_director.tscn` @ `60 FPS`) composited cleanly in `tools/build_trailer.py` with a 44.1 kHz stereo cyber-synthwave soundtrack, synced Phase Parry / Ring / Impact SFX cues, kinetic hook typography, and 1-click GitHub CTA end card.

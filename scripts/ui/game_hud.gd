@@ -1,5 +1,5 @@
 extends CanvasLayer
-## In-game HUD displaying eye-centered telemetry reticle, scale-punched graze & ring popups,
+## In-game HUD displaying eye-centered telemetry reticle, scale-punched graze/ring/milestone callouts,
 ## Chain multiplier, Flow Color Lock, Overdrive Boost status, Stage Intro banner, and WATCH controls.
 
 var _session: GameSession = null
@@ -18,6 +18,7 @@ var _boost_label: Label
 var _depth_bar: ProgressBar
 var _depth_label: Label
 var _graze_popup: Label
+var _milestone_label: Label
 var _intro_banner: Label
 var _practice_label: Label
 var _watch_banner: Label
@@ -25,6 +26,7 @@ var _autopilot_banner: Label
 var _ach_toast: Label
 
 var _popup_timer: float = 0.0
+var _milestone_timer: float = 0.0
 var _intro_timer: float = 0.0
 var _toast_timer: float = 0.0
 var _chain_ratio: float = 0.0
@@ -35,6 +37,7 @@ func _ready() -> void:
 	_build_ui()
 	GameEvents.graze_scored.connect(_on_graze_scored)
 	GameEvents.ring_collected.connect(_on_ring_collected)
+	GameEvents.milestone_callout.connect(_on_milestone_callout)
 	GameEvents.chain_changed.connect(_on_chain_changed)
 	GameEvents.flow_changed.connect(_on_flow_changed)
 	GameEvents.boost_changed.connect(_on_boost_changed)
@@ -57,16 +60,18 @@ func configure_session(session: GameSession) -> void:
 	_crosshair.visible = (_session.scoring.mode != ScoringManager.MODE_WATCH)
 	_rings_label.text = "RINGS: 0"
 	_boost_label.visible = false
+	_milestone_label.visible = false
+	_milestone_timer = 0.0
 	_chain_ratio = 0.0
 
 	if _session.scoring.mode == ScoringManager.MODE_WATCH:
 		_intro_banner.visible = false
 		_intro_timer = 0.0
 	else:
-		_intro_banner.text = "%s · %s  —  HOLD CLICK / SHIFT TO BOOST" % [st.stage_code, st.title.to_upper()]
+		_intro_banner.text = "%s · %s  —  HOLD CLICK: BOOST  |  RIGHT CLICK / E: PHASE BLINK" % [st.stage_code, st.title.to_upper()]
 		_intro_banner.modulate.a = 1.0
 		_intro_banner.visible = true
-		_intro_timer = 2.4
+		_intro_timer = 2.6
 
 	_on_section_changed(0, st.effect_mask_at_depth(0.0))
 
@@ -104,12 +109,16 @@ func _process(delta: float) -> void:
 			_session.scoring.chain_multiplier,
 			_session.boost_level,
 			beat_k,
-			t_norm
+			t_norm,
+			_session.player.get_phase_ready_ratio(),
+			_session.player.is_phase_invulnerable()
 		)
 
 	if not is_playing:
 		_graze_popup.visible = false
+		_milestone_label.visible = false
 		_intro_banner.visible = false
+		_ach_toast.visible = false
 	else:
 		if _intro_timer > 0.0:
 			_intro_timer -= delta
@@ -129,10 +138,19 @@ func _process(delta: float) -> void:
 		else:
 			_graze_popup.visible = false
 
-	if _toast_timer > 0.0:
-		_toast_timer -= delta
-		if _toast_timer <= 0.0:
-			_ach_toast.visible = false
+		if _milestone_timer > 0.0:
+			_milestone_timer -= delta
+			var m_pop := clampf((_milestone_timer - 1.30) / 0.35, 0.0, 1.0)
+			_milestone_label.pivot_offset = _milestone_label.size * 0.5
+			_milestone_label.scale = Vector2.ONE * lerpf(1.0, 1.25, m_pop)
+			_milestone_label.modulate.a = clampf(_milestone_timer / 0.45, 0.0, 1.0)
+			if _milestone_timer <= 0.0:
+				_milestone_label.visible = false
+
+		if _toast_timer > 0.0:
+			_toast_timer -= delta
+			if _toast_timer <= 0.0:
+				_ach_toast.visible = false
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -168,6 +186,14 @@ func _on_ring_collected(points: int, _streak: int, _multiplier: float) -> void:
 	_graze_popup.scale = Vector2.ONE * 1.42
 	_graze_popup.visible = true
 	_popup_timer = 0.85
+
+
+func _on_milestone_callout(txt: String, col: Color) -> void:
+	_milestone_label.text = txt
+	_milestone_label.modulate = col
+	_milestone_label.scale = Vector2.ONE * 1.25
+	_milestone_label.visible = true
+	_milestone_timer = 1.65
 
 
 func _on_chain_changed(streak: int, multiplier: float, timer_ratio: float) -> void:
@@ -301,14 +327,14 @@ func _build_ui() -> void:
 	stat_row.add_child(_speed_label)
 
 	_boost_label = Label.new()
-	_boost_label.text = "⚡ OVERDRIVE BOOST (2x DIST)"
+	_boost_label.text = "OVERDRIVE BOOST (2x DIST)"
 	_boost_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_boost_label.modulate = Color("facc15")
 	UITheme.apply_hud_text_outline(_boost_label, 3)
 	_boost_label.visible = false
 	tr.add_child(_boost_label)
 
-	# Center banners & popup
+	# Center popups & milestone banners
 	_graze_popup = Label.new()
 	_graze_popup.set_anchors_preset(Control.PRESET_CENTER)
 	_graze_popup.offset_left = -210; _graze_popup.offset_right = 210
@@ -319,12 +345,22 @@ func _build_ui() -> void:
 	_graze_popup.visible = false
 	root.add_child(_graze_popup)
 
+	_milestone_label = Label.new()
+	_milestone_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_milestone_label.offset_left = -320; _milestone_label.offset_right = 320
+	_milestone_label.offset_top = 158; _milestone_label.offset_bottom = 205
+	_milestone_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_milestone_label.add_theme_font_size_override("font_size", 26)
+	UITheme.apply_hud_text_outline(_milestone_label, 5)
+	_milestone_label.visible = false
+	root.add_child(_milestone_label)
+
 	_intro_banner = Label.new()
 	_intro_banner.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	_intro_banner.offset_left = -390; _intro_banner.offset_right = 390
-	_intro_banner.offset_top = 128
+	_intro_banner.offset_left = -420; _intro_banner.offset_right = 420
+	_intro_banner.offset_top = 122
 	_intro_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_intro_banner.add_theme_font_size_override("font_size", 20)
+	_intro_banner.add_theme_font_size_override("font_size", 18)
 	_intro_banner.modulate = Color("facc15")
 	UITheme.apply_hud_text_outline(_intro_banner, 4)
 	_intro_banner.visible = false
@@ -354,7 +390,7 @@ func _build_ui() -> void:
 	_ach_toast = Label.new()
 	_ach_toast.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	_ach_toast.offset_left = -280; _ach_toast.offset_right = 280
-	_ach_toast.offset_top = 92
+	_ach_toast.offset_top = 88
 	_ach_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_ach_toast.modulate = Color("22c55e")
 	UITheme.apply_hud_text_outline(_ach_toast, 4)

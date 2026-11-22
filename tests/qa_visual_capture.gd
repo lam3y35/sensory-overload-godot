@@ -168,7 +168,10 @@ func _capture_gameplay_and_modes() -> void:
 		await _snap("07_impact_freeze.png")
 		gs.set_process(true)
 		gs.set_physics_process(true)
-		await _await_seconds(0.45)
+		var wait_t := 0.0
+		while gs.state == GameSession.SessionState.IMPACT_FREEZE and wait_t < 1.2:
+			await get_tree().process_frame
+			wait_t += minf(get_process_delta_time(), 0.05)
 	_metrics["checks"]["dead_state_reached"] = (gs.state == GameSession.SessionState.DEAD)
 	await _snap("08_death_overlay.png")
 
@@ -180,10 +183,16 @@ func _capture_gameplay_and_modes() -> void:
 	await _snap("09_pause_menu.png")
 	gs.resume_game()
 
-	# 10 - High Chaos Ranked Sensory Overload (06_c) in live moving flight
+	# 10 - High Chaos Ranked Sensory Overload (06_c) in live moving flight + clean steady FPS benchmark
 	gs.start_session({"stage_id": "06_c", "mode": ScoringManager.MODE_RANKED})
-	await _await_seconds(0.75)
-	_metrics["fps_samples"]["ranked_06_c"] = Engine.get_frames_per_second()
+	await _await_seconds(0.35)
+	var bench_frames := 0
+	var bench_start_us := Time.get_ticks_usec()
+	while bench_frames < 30:
+		await get_tree().process_frame
+		bench_frames += 1
+	var bench_sec := maxf(0.001, float(Time.get_ticks_usec() - bench_start_us) / 1000000.0)
+	_metrics["fps_samples"]["ranked_06_c"] = snappedf(float(bench_frames) / bench_sec, 0.1)
 	await _snap("10_sensory_overload_fx.png")
 
 	# 11 - Practice Mode Checkpoint & Zen Section Check

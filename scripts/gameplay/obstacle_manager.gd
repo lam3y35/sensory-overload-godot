@@ -1,7 +1,7 @@
 class_name ObstacleManager
 extends Node3D
-## Spawns, animates, and renders all 10 obstacle archetypes with an isolated per-instance
-## simulation clock, guaranteeing 1:1 Transform3D & OBB parity between visuals and SweptCollision.
+## Spawns, animates, and renders all 10 obstacle archetypes with pooled meshes,
+## Early-Z opaque vs. translucent shader selection, and decoupled logic vs. visual sync.
 
 const ACTIVE_AHEAD_M := 165.0
 const ACTIVE_BEHIND_M := 14.0
@@ -10,10 +10,12 @@ var local_time: float = 0.0
 var highlighted_obstacle_id: String = ""
 var _last_player_y: float = 0.0
 
+var _shader_opaque: Shader
 var _shader: Shader
 var _unit_box: BoxMesh
 var _stage: StageData
-var _node_pool: Dictionary = {} # obs_id -> {root: Node3D, meshes: Array[MeshInstance3D], mats: Array[ShaderMaterial]}
+var _node_pool: Dictionary = {} # obs_id -> Array[{mi, mat_opaque, mat_alpha}]
+var _free_meshes: Array[Dictionary] = []
 var _active_cache: Array[Dictionary] = [] # [{obstacle: ObstacleData, parts: Array[Dictionary]}]
 
 
@@ -22,6 +24,8 @@ func _ready() -> void:
 
 
 func _ensure_shared_resources() -> void:
+	if _shader_opaque == null:
+		_shader_opaque = load("res://shaders/obstacle_opaque.gdshader") as Shader
 	if _shader == null:
 		_shader = load("res://shaders/obstacle_painted.gdshader") as Shader
 	if _unit_box == null:
@@ -39,10 +43,13 @@ func reset_with_stage(stage: StageData) -> void:
 
 func clear_all() -> void:
 	for k in _node_pool.keys():
-		var entry: Dictionary = _node_pool[k]
-		var r := entry["root"] as Node3D
-		if is_instance_valid(r):
-			r.queue_free()
+		var slots: Array = _node_pool[k]
+		for s in slots:
+			var slot := s as Dictionary
+			var mi := slot["mi"] as MeshInstance3D
+			if is_instance_valid(mi):
+				mi.visible = false
+				_free_meshes.append(slot)
 	_node_pool.clear()
 	_active_cache.clear()
 
@@ -51,12 +58,10 @@ func set_highlight_obstacle(obs_id: String) -> void:
 	highlighted_obstacle_id = obs_id
 
 
-func step_and_sync(
+func step_logic(
 	player_y: float,
 	delta: float,
-	beat_phase: float,
-	bass_energy: float,
-	flow_locked: bool
+	beat_phase: float
 ) -> void:
 	_ensure_shared_resources()
 	local_time += delta
@@ -67,31 +72,76 @@ func step_and_sync(
 
 	var min_depth := (-player_y) - ACTIVE_BEHIND_M
 	var max_depth := (-player_y) + ACTIVE_AHEAD_M
-	var visible_ids: Dictionary = {}
-
 	for obs in _stage.obstacles:
 		if obs.depth < min_depth or obs.depth > max_depth:
 			continue
-		visible_ids[obs.id] = true
 		var parts := compute_parts(obs, local_time, beat_phase, _stage.tunnel_radius)
 		_active_cache.append({"obstacle": obs, "parts": parts})
+
+
+func sync_visuals(
+	beat_phase: float,
+	bass_energy: float,
+	flow_locked: bool
+) -> void:
+	_ensure_shared_resources()
+	var visible_ids: Dictionary = {}
+	for entry in _active_cache:
+		var obs := entry["obstacle"] as ObstacleData
+		var parts := entry["parts"] as Array[Dictionary]
+		visible_ids[obs.id] = true
 		_sync_visual_entry(obs, parts, beat_phase, bass_energy, flow_locked)
 
-	# Release obstacles outside window
-	var to_remove: Array[String] = []
+	var to_release: Array[String] = []
 	for existing_id in _node_pool.keys():
 		if not visible_ids.has(existing_id):
-			to_remove.append(str(existing_id))
-	for rid in to_remove:
-		var ent: Dictionary = _node_pool[rid]
-		var rn := ent["root"] as Node3D
-		if is_instance_valid(rn):
-			rn.queue_free()
+			to_release.append(str(existing_id))
+	for rid in to_release:
+		var slots: Array = _node_pool[rid]
+		for s in slots:
+			var slot := s as Dictionary
+			var mi := slot["mi"] as MeshInstance3D
+			if is_instance_valid(mi):
+				mi.visible = false
+				_free_meshes.append(slot)
 		_node_pool.erase(rid)
+
+
+func step_and_sync(
+	player_y: float,
+	delta: float,
+	beat_phase: float,
+	bass_energy: float,
+	flow_locked: bool
+) -> void:
+	step_logic(player_y, delta, beat_phase)
+	sync_visuals(beat_phase, bass_energy, flow_locked)
 
 
 func get_active_obstacles() -> Array[Dictionary]:
 	return _active_cache
+
+
+func _acquire_mesh_slot() -> Dictionary:
+	while not _free_meshes.is_empty():
+		var recycled := _free_meshes.pop_back() as Dictionary
+		var rmi := recycled["mi"] as MeshInstance3D
+		if is_instance_valid(rmi):
+			rmi.visible = true
+			return recycled
+	var mi := MeshInstance3D.new()
+	mi.mesh = _unit_box
+	var mat_op := ShaderMaterial.new()
+	mat_op.shader = _shader_opaque
+	var mat_al := ShaderMaterial.new()
+	mat_al.shader = _shader
+	mi.material_override = mat_op
+	add_child(mi)
+	return {
+		"mi": mi,
+		"mat_opaque": mat_op,
+		"mat_alpha": mat_al,
+	}
 
 
 func _sync_visual_entry(
@@ -102,43 +152,36 @@ func _sync_visual_entry(
 	flow_locked: bool
 ) -> void:
 	if not _node_pool.has(obs.id):
-		var container := Node3D.new()
-		container.name = "Obs_" + obs.id.validate_node_name()
-		add_child(container)
-		_node_pool[obs.id] = {
-			"root": container,
-			"meshes": [],
-			"mats": [],
-		}
+		_node_pool[obs.id] = []
 
-	var entry: Dictionary = _node_pool[obs.id]
-	var root := entry["root"] as Node3D
-	var meshes: Array = entry["meshes"]
-	var mats: Array = entry["mats"]
+	var slots: Array = _node_pool[obs.id]
+	while slots.size() < parts.size():
+		slots.append(_acquire_mesh_slot())
 
-	while meshes.size() < parts.size():
-		var mi := MeshInstance3D.new()
-		mi.mesh = _unit_box
-		var mat := ShaderMaterial.new()
-		mat.shader = _shader
-		mi.material_override = mat
-		root.add_child(mi)
-		meshes.append(mi)
-		mats.append(mat)
-
-	while meshes.size() > parts.size():
-		var extra := meshes.pop_back() as MeshInstance3D
-		mats.pop_back()
-		if is_instance_valid(extra):
-			extra.queue_free()
+	while slots.size() > parts.size():
+		var extra := slots.pop_back() as Dictionary
+		var emi := extra["mi"] as MeshInstance3D
+		if is_instance_valid(emi):
+			emi.visible = false
+			_free_meshes.append(extra)
 
 	var is_hit := (obs.id == highlighted_obstacle_id and not obs.id.is_empty())
+	var bg_col := _stage.palette[2] if (_stage != null and _stage.palette.size() > 2) else Color("080314")
+	var global_opaque := SettingsManager.obstacle_opacity >= 0.99
+
 	for i in range(parts.size()):
 		var p: Dictionary = parts[i]
-		var mi := meshes[i] as MeshInstance3D
-		var mat := mats[i] as ShaderMaterial
+		var slot := slots[i] as Dictionary
+		var mi := slot["mi"] as MeshInstance3D
 		var part_xform := p["transform"] as Transform3D
 		var half_ext := p["half_extents"] as Vector3
+		var layer_alpha := float(p.get("layer_alpha", 1.0))
+		var use_opaque := global_opaque and layer_alpha >= 0.99
+
+		var mat := (slot["mat_opaque"] if use_opaque else slot["mat_alpha"]) as ShaderMaterial
+		if mi.material_override != mat:
+			mi.material_override = mat
+
 		# Apply scale in local space (Rot * Scale) matching SweptCollision's analytical OBB without shear
 		mi.global_transform = Transform3D(part_xform.basis.scaled_local(half_ext * 2.0), part_xform.origin)
 
@@ -157,9 +200,8 @@ func _sync_visual_entry(
 		mat.set_shader_parameter("u_flow_locked", 1.0 if flow_locked else 0.0)
 		mat.set_shader_parameter("u_color_primary", prim)
 		mat.set_shader_parameter("u_color_accent", acc)
-		var bg_col := _stage.palette[2] if (_stage != null and _stage.palette.size() > 2) else Color("080314")
 		mat.set_shader_parameter("u_color_bg", bg_col)
-		mat.set_shader_parameter("u_layer_alpha", float(p.get("layer_alpha", 1.0)))
+		mat.set_shader_parameter("u_layer_alpha", layer_alpha)
 
 
 static func compute_parts(

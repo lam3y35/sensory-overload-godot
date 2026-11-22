@@ -60,23 +60,20 @@ func update_tunnel(
 		_tunnel_radius = radius
 		_last_start_ring = -999999
 
-	# Rings index downward as k = 0, 1, 2... at y = -k * RING_SPACING
+	# Modulo ring-buffer update: write full buffer only on jump/reset, otherwise update ONLY newly entered rings
 	var current_ring := int(floor((-player_y) / RING_SPACING)) - 4
 	if current_ring != _last_start_ring:
-		_last_start_ring = current_ring
 		var mm := _multi_mesh_inst.multimesh
-		for r_offset in range(RING_COUNT):
-			var ring_idx := current_ring + r_offset
-			var y_pos := -float(ring_idx) * RING_SPACING
-			var twist_offset := float(ring_idx) * 0.04
-			for seg in range(SEGMENTS_PER_RING):
-				var inst_idx := r_offset * SEGMENTS_PER_RING + seg
-				var angle := (float(seg) / float(SEGMENTS_PER_RING)) * TAU + twist_offset
-				var pos := Vector3(cos(angle) * _tunnel_radius, y_pos, sin(angle) * _tunnel_radius)
-				var basis := Basis(Vector3.UP, -angle + PI * 0.5)
-				mm.set_instance_transform(inst_idx, Transform3D(basis, pos))
-				var alt := float((ring_idx + seg) & 1)
-				mm.set_instance_custom_data(inst_idx, Color(float(ring_idx), alt, float(seg) / float(SEGMENTS_PER_RING), 1.0))
+		if _last_start_ring == -999999 or absi(current_ring - _last_start_ring) >= RING_COUNT:
+			for r_offset in range(RING_COUNT):
+				_write_ring(mm, current_ring + r_offset)
+		elif current_ring > _last_start_ring:
+			for ring_idx in range(_last_start_ring + RING_COUNT, current_ring + RING_COUNT):
+				_write_ring(mm, ring_idx)
+		else:
+			for ring_idx in range(current_ring, _last_start_ring):
+				_write_ring(mm, ring_idx)
+		_last_start_ring = current_ring
 
 	var c_prim := palette[0] if palette.size() > 0 else Color("14f1d9")
 	var c_acc := palette[1] if palette.size() > 1 else Color("ff2e93")
@@ -100,3 +97,17 @@ func update_tunnel(
 	_shader_mat.set_shader_parameter("u_bit_checker", 1.0 if EffectCatalog.has_effect(effect_mask, 5) else 0.0)
 	_shader_mat.set_shader_parameter("u_bit_wireframe", 1.0 if EffectCatalog.has_effect(effect_mask, 6) else 0.0)
 	_shader_mat.set_shader_parameter("u_bit_depth_fog", 1.0 if EffectCatalog.has_effect(effect_mask, 7) else 0.0)
+
+
+func _write_ring(mm: MultiMesh, ring_idx: int) -> void:
+	var slot := posmod(ring_idx, RING_COUNT)
+	var y_pos := -float(ring_idx) * RING_SPACING
+	var twist_offset := float(ring_idx) * 0.04
+	for seg in range(SEGMENTS_PER_RING):
+		var inst_idx := slot * SEGMENTS_PER_RING + seg
+		var angle := (float(seg) / float(SEGMENTS_PER_RING)) * TAU + twist_offset
+		var pos := Vector3(cos(angle) * _tunnel_radius, y_pos, sin(angle) * _tunnel_radius)
+		var basis := Basis(Vector3.UP, -angle + PI * 0.5)
+		mm.set_instance_transform(inst_idx, Transform3D(basis, pos))
+		var alt := float((ring_idx + seg) & 1)
+		mm.set_instance_custom_data(inst_idx, Color(float(ring_idx), alt, float(seg) / float(SEGMENTS_PER_RING), 1.0))

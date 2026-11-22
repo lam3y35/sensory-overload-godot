@@ -208,6 +208,7 @@ func _ensure_input_actions() -> void:
 		"clear_checkpoint": [KEY_X],
 		"editor_play_here": [KEY_P, KEY_F5],
 		"boost": [KEY_SHIFT, KEY_SPACE],
+		"phase_dash": [KEY_E],
 	}
 	for action_name in bindings.keys():
 		if not InputMap.has_action(action_name):
@@ -221,3 +222,7 @@ func _ensure_input_actions() -> void:
 				var mb := InputEventMouseButton.new()
 				mb.button_index = MOUSE_BUTTON_LEFT
 				InputMap.action_add_event("boost", mb)
+			elif action_name == "phase_dash":
+				var mbr := InputEventMouseButton.new()
+				mbr.button_index = MOUSE_BUTTON_RIGHT
+				InputMap.action_add_event("phase_dash", mbr)

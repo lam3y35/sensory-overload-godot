@@ -5,8 +5,9 @@
 # Build artifacts & standalone executables
 builds/
 
-# Local GPU visual QA captures (curated showcase shots live in docs/screenshots/)
+# Local GPU visual QA & rendered trailer media
 qa_screenshots/
+media/
 
 # Backups & OS/Python artifacts
 *.bak

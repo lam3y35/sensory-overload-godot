@@ -51,10 +51,10 @@ void fragment() {
 	final_col = mix(final_col, u_color_bg.rgb * 0.85, fog_t);
 	float spawn_fade = smoothstep(168.0, 128.0, v_depth_rel);
 
-	// Crimson strobe highlight for the colliding obstacle during delayed impact freeze
+	// Crisp crimson-orange neon strobe highlight for the colliding obstacle during delayed impact freeze
 	if (u_hit_highlight > 0.01) {
 		float flash = 0.5 + 0.5 * sin(u_time * 32.0);
-		vec3 alert_col = mix(vec3(1.0, 0.12, 0.16), vec3(1.0, 0.90, 0.28), flash * 0.45) * 1.65;
+		vec3 alert_col = mix(vec3(0.94, 0.08, 0.22), vec3(1.0, 0.24, 0.16), flash) * 1.02;
 		final_col = mix(final_col, alert_col, clamp(u_hit_highlight, 0.0, 1.0));
 		spawn_fade = 1.0;
 	}

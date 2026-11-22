@@ -47,9 +47,11 @@ var near_misses: int = 0
 var daredevils: int = 0
 var death_wishes: int = 0
 var rings_collected: int = 0
+var phase_parries: int = 0
 var boost_time: float = 0.0
 var deaths_in_run: int = 0
 var grazed_obstacles: Dictionary = {} # obs_id -> highest tier awarded
+var _parried_obstacles: Dictionary = {}
 var _stage_obstacle_count: int = 0
 
 var practice_checkpoint_active: bool = false
@@ -71,8 +73,10 @@ func begin_run(run_mode: String, stage: StageData, keep_checkpoint: bool = false
 	daredevils = 0
 	death_wishes = 0
 	rings_collected = 0
+	phase_parries = 0
 	boost_time = 0.0
 	grazed_obstacles.clear()
+	_parried_obstacles.clear()
 	_stage_obstacle_count = stage.obstacles.size() if stage != null else 0
 	if not keep_checkpoint:
 		deaths_in_run = 0
@@ -171,6 +175,34 @@ func register_ring(_ring_id: String, is_autopilot: bool = false) -> int:
 	return awarded
 
 
+func register_phase_parry(obs_id: String) -> int:
+	if mode == MODE_WATCH or obs_id.is_empty():
+		return 0
+	if _parried_obstacles.has(obs_id):
+		return 0
+	_parried_obstacles[obs_id] = true
+	phase_parries += 1
+
+	if mode == MODE_ZEN:
+		flow_meter = minf(1.0, flow_meter + 0.22)
+		_update_flow_lock()
+		GameEvents.flow_changed.emit(flow_meter, color_locked)
+		return 0
+
+	streak += 3
+	chain_multiplier = minf(MAX_CHAIN_MULT, 1.0 + floorf(float(streak) / 3.0) * 0.5)
+	max_chain = maxf(max_chain, chain_multiplier)
+	chain_timer = CHAIN_DECAY_SECONDS
+	var awarded := int(round(800.0 * chain_multiplier))
+	score += awarded
+	flow_meter = minf(1.0, flow_meter + 0.25)
+	_update_flow_lock()
+	GameEvents.chain_changed.emit(streak, chain_multiplier, 1.0)
+	GameEvents.flow_changed.emit(flow_meter, color_locked)
+	GameEvents.milestone_callout.emit("PHASE PARRY! +%d" % awarded, Color("14f1d9"))
+	return awarded
+
+
 func step(delta: float, is_frozen: bool, in_transition: bool) -> void:
 	if is_frozen:
 		return
@@ -255,6 +287,7 @@ func build_summary(depth_m: float, elapsed_sec: float, cleared: bool) -> Diction
 		"death_wishes": death_wishes,
 		"total_grazes": near_misses + daredevils + death_wishes,
 		"rings_collected": rings_collected,
+		"phase_parries": phase_parries,
 		"boost_time": boost_time,
 		"rank_grade": compute_rank_grade(),
 		"deaths": deaths_in_run,

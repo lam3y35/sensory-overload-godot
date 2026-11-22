@@ -1,11 +1,12 @@
 class_name GameSession
 extends Node3D
 ## Top-level 3D gameplay orchestrator coordinating Normal, Ranked, Zen, Practice,
-## WATCH Replay, and Editor Play-From-Here runs with variable-rate sub-stepping,
-## Hyper-Boost, Energy Rings, 3D Speed Particles, and 0.35s impact freeze.
+## WATCH Replay, and Editor Play-From-Here runs with decoupled 120 Hz logic sub-stepping,
+## once-per-frame GPU sync, Hyper-Boost, Phase Dash/Parry, Energy Rings, and 3D Speed Particles.
 
 const DEATH_FREEZE_DURATION := 0.35
 const PRACTICE_GRACE_DURATION := 0.85
+const LIVE_PLAYER_RADIUS := 0.27
 
 enum SessionState {
 	IDLE,
@@ -49,9 +50,12 @@ var boost_override: int = -1 # -1 = read input, 0 = force off, 1 = force on
 var flash_strength: float = 0.0
 var flash_color: Color = Color("14f1d9")
 
+var _hitstop_timer: float = 0.0
+var _milestone_chain_tier: int = 0
 var _was_boosting: bool = false
 var _was_flow_locked: bool = false
 var _passed_obstacles: Dictionary = {}
+var _parried_ids: Dictionary = {}
 var _last_impact_obs_id: String = ""
 var _last_impact_obs_type: String = ""
 var _last_impact_point: Vector3 = Vector3.ZERO
@@ -168,6 +172,8 @@ func start_session(params: Dictionary, keep_practice_checkpoint: bool = false) -
 	current_speed = stage.base_speed
 	ranked_lap = 0
 	freeze_timer = 0.0
+	_hitstop_timer = 0.0
+	_milestone_chain_tier = 0
 	in_autopilot = false
 	current_section_index = -1
 	boost_level = 0.0
@@ -175,6 +181,7 @@ func start_session(params: Dictionary, keep_practice_checkpoint: bool = false) -
 	_was_boosting = false
 	_was_flow_locked = false
 	_passed_obstacles.clear()
+	_parried_ids.clear()
 
 	var spawn_depth := _start_depth
 	var spawn_xz := Vector2.ZERO
@@ -207,8 +214,7 @@ func start_session(params: Dictionary, keep_practice_checkpoint: bool = false) -
 			replay_controller.start_recording(stage, run_mode)
 
 	_sync_section_and_effects(spawn_depth)
-	obstacle_manager.step_and_sync(player.position_3d.y, 0.0, AudioSyncManager.beat_phase, AudioSyncManager.bass_energy, false)
-	ring_manager.step_and_sync(player.position_3d.y, 0.0, AudioSyncManager.beat_phase)
+	obstacle_manager.step_logic(player.position_3d.y, 0.0, AudioSyncManager.beat_phase)
 
 	if hud_overlay != null and hud_overlay.has_method("configure_session"):
 		hud_overlay.configure_session(self)
@@ -219,7 +225,7 @@ func start_session(params: Dictionary, keep_practice_checkpoint: bool = false) -
 
 	state = SessionState.PLAYING
 	_set_mouse_captured(true)
-	_update_visual_frame(0.0)
+	sync_visual_frame(0.0)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -238,6 +244,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			resume_game()
 		elif scoring.mode == ScoringManager.MODE_WATCH:
 			exit_to_menu()
+	elif event.is_action_pressed("phase_dash") and state == SessionState.PLAYING:
+		if not in_autopilot and scoring.mode != ScoringManager.MODE_WATCH:
+			trigger_phase_blink()
 	elif event.is_action_pressed("retry") or (is_accept_key and state == SessionState.DEAD):
 		if state == SessionState.PLAYING or state == SessionState.DEAD or state == SessionState.CLEARED:
 			retry_run()
@@ -253,16 +262,34 @@ func _unhandled_input(event: InputEvent) -> void:
 			scoring.clear_checkpoint()
 
 
+func trigger_phase_blink(dir_override: Vector2 = Vector2.ZERO) -> bool:
+	if state != SessionState.PLAYING:
+		return false
+	if player.trigger_phase_dash(dir_override):
+		AudioSyncManager.play_sfx("phase_dash")
+		flash_color = Color("14f1d9")
+		flash_strength = maxf(flash_strength, 0.42)
+		speed_particles.emit_burst(player.position_3d + Vector3(0.0, -3.0, 0.0), Color("14f1d9"), 12)
+		GameEvents.phase_dash_used.emit(false, player.get_phase_ready_ratio())
+		return true
+	return false
+
+
 func _process(delta: float) -> void:
-	# Variable-rate sub-stepping delivers locked smoothness at 60/120/144+ FPS with deterministic steps
-	var remaining := minf(delta, 0.05)
-	while remaining > 0.0001:
+	# Decoupled fixed sub-stepping (logic up to 120 Hz) paired with ONCE-per-frame GPU sync!
+	var clamped_dt := minf(delta, 0.05)
+	var remaining := clamped_dt
+	var steps := 0
+	while remaining > 0.0001 and steps < 8:
 		var dt := minf(remaining, 1.0 / 120.0)
-		step_simulation(dt)
+		step_simulation(dt, false)
 		remaining -= dt
+		steps += 1
+	if stage != null and (state == SessionState.PLAYING or state == SessionState.IMPACT_FREEZE):
+		sync_visual_frame(clamped_dt)
 
 
-func step_simulation(delta: float) -> void:
+func step_simulation(delta: float, sync_visuals: bool = true) -> void:
 	flash_strength = maxf(0.0, flash_strength - delta * 2.6)
 
 	if state == SessionState.IMPACT_FREEZE:
@@ -274,9 +301,9 @@ func step_simulation(delta: float) -> void:
 			cos(freeze_timer * 79.0) * shake_amp
 		)
 		player.set_replay_pose(shake_pos, player.current_roll)
-		obstacle_manager.step_and_sync(player.position_3d.y, 0.0, AudioSyncManager.beat_phase, AudioSyncManager.bass_energy, scoring.color_locked)
-		speed_particles.update_particles(player.position_3d.y, delta, 6.0, 0.0, scoring.color_locked, stage.palette)
-		_update_visual_frame(delta)
+		obstacle_manager.step_logic(player.position_3d.y, 0.0, AudioSyncManager.beat_phase)
+		if sync_visuals:
+			sync_visual_frame(delta)
 		if freeze_timer <= 0.0:
 			_finalize_death()
 		return
@@ -284,11 +311,18 @@ func step_simulation(delta: float) -> void:
 	if state != SessionState.PLAYING:
 		return
 
+	if _hitstop_timer > 0.0:
+		_hitstop_timer -= delta
+		player.update_camera_effects(delta, current_effect_mask, current_speed, AudioSyncManager.bass_energy, boost_level)
+		if sync_visuals:
+			sync_visual_frame(delta)
+		return
+
 	elapsed_time += delta
 	spawn_grace_timer = maxf(0.0, spawn_grace_timer - delta)
 
 	if scoring.mode == ScoringManager.MODE_WATCH and replay_controller != null:
-		_step_watch_mode(delta)
+		_step_watch_mode(delta, sync_visuals)
 		return
 
 	var depth_m := maxf(0.0, -player.position_3d.y)
@@ -324,34 +358,65 @@ func step_simulation(delta: float) -> void:
 	scoring.step(delta, false, in_autopilot)
 
 	_sync_section_and_effects(new_depth)
-	obstacle_manager.step_and_sync(p1.y, delta, AudioSyncManager.beat_phase, AudioSyncManager.bass_energy, scoring.color_locked)
-	ring_manager.step_and_sync(p1.y, delta, AudioSyncManager.beat_phase)
+	obstacle_manager.step_logic(p1.y, delta, AudioSyncManager.beat_phase)
 	player.update_camera_effects(delta, current_effect_mask, current_speed, AudioSyncManager.bass_energy, boost_level)
-	speed_particles.update_particles(p1.y, delta, current_speed, boost_level, scoring.color_locked, stage.palette)
 
 	if replay_controller != null:
 		replay_controller.record_frame(p1.y, p1.x, p1.z, player.current_roll)
 
 	_evaluate_rings(p0, p1)
 	_evaluate_collisions(p0, p1)
-	_check_flow_lock_cue()
-	_update_visual_frame(delta)
+	_check_flow_lock_and_milestones()
+
+	if sync_visuals:
+		sync_visual_frame(delta)
 
 	if state == SessionState.PLAYING and new_depth >= stage.total_length():
 		_handle_stage_end()
 
 
-func _step_watch_mode(delta: float) -> void:
+func sync_visual_frame(delta: float) -> void:
+	if stage == null:
+		return
+	var p_speed := 6.0 if state == SessionState.IMPACT_FREEZE else current_speed
+	var p_boost := 0.0 if state == SessionState.IMPACT_FREEZE else boost_level
+	tunnel_renderer.update_tunnel(
+		player.position_3d.y,
+		elapsed_time,
+		current_effect_mask,
+		AudioSyncManager.beat_phase,
+		AudioSyncManager.bass_energy,
+		scoring.flow_meter,
+		stage.palette,
+		stage.tunnel_radius
+	)
+	obstacle_manager.sync_visuals(AudioSyncManager.beat_phase, AudioSyncManager.bass_energy, scoring.color_locked)
+	ring_manager.step_and_sync(player.position_3d.y, delta, AudioSyncManager.beat_phase)
+	speed_particles.update_particles(player.position_3d.y, delta, p_speed, p_boost, scoring.color_locked, stage.palette)
+	if effect_compositor != null and effect_compositor.has_method("apply_effects"):
+		effect_compositor.apply_effects(
+			current_effect_mask,
+			elapsed_time,
+			current_speed,
+			AudioSyncManager.beat_phase,
+			AudioSyncManager.bass_energy,
+			scoring.flow_meter,
+			p_boost,
+			flash_strength,
+			flash_color
+		)
+
+
+func _step_watch_mode(delta: float, sync_visuals: bool) -> void:
 	var pose: Dictionary = replay_controller.step_watch(delta)
 	var pos := pose.get("pos", Vector3.ZERO) as Vector3
 	var roll := float(pose.get("roll", 0.0))
 	player.set_replay_pose(pos, roll)
 	var depth_m := maxf(0.0, -pos.y)
 	_sync_section_and_effects(depth_m)
-	obstacle_manager.step_and_sync(pos.y, delta, AudioSyncManager.beat_phase, AudioSyncManager.bass_energy, false)
-	ring_manager.step_and_sync(pos.y, delta, AudioSyncManager.beat_phase)
-	speed_particles.update_particles(pos.y, delta, stage.base_speed, 0.0, false, stage.palette)
-	_update_visual_frame(delta)
+	obstacle_manager.step_logic(pos.y, delta, AudioSyncManager.beat_phase)
+	if sync_visuals:
+		sync_visual_frame(delta)
 	if bool(pose.get("finished", false)):
 		state = SessionState.CLEARED
 		_set_mouse_captured(false)
@@ -364,6 +429,7 @@ func _evaluate_rings(p0: Vector3, p1: Vector3) -> void:
 	if not bool(r_eval["collected"]):
 		return
 	scoring.register_ring(str(r_eval["id"]), in_autopilot)
+	player.refresh_phase_cooldown()
 	var pitch := 1.0 + minf(0.55, float(scoring.streak) * 0.035)
 	AudioSyncManager.play_sfx("ring", pitch)
 	speed_particles.emit_burst(r_eval["pos"] as Vector3, Color("facc15"), 18)
@@ -379,8 +445,23 @@ func _evaluate_collisions(p0: Vector3, p1: Vector3) -> void:
 		var parts := entry["parts"] as Array[Dictionary]
 		if obs.depth < (-p1.y - 12.0) or obs.depth > (-p0.y + 12.0):
 			continue
-		var eval := SweptCollision.evaluate_obstacle(p0, p1, parts)
+		var eval := SweptCollision.evaluate_obstacle(p0, p1, parts, LIVE_PLAYER_RADIUS)
 		if bool(eval["hit"]):
+			if player.is_phase_invulnerable() and not in_autopilot and scoring.mode != ScoringManager.MODE_WATCH:
+				if not _parried_ids.has(obs.id):
+					_parried_ids[obs.id] = true
+					scoring.register_phase_parry(obs.id)
+					player.refresh_phase_cooldown()
+					var p_pitch := 1.0 + minf(0.35, float(scoring.streak) * 0.02)
+					AudioSyncManager.play_sfx("phase_parry", p_pitch)
+					speed_particles.emit_burst(eval["impact_point"] as Vector3, Color("14f1d9"), 22)
+					player.add_fov_punch(5.0)
+					player.add_shake(0.32)
+					flash_color = Color("14f1d9")
+					flash_strength = maxf(flash_strength, 0.72)
+					_hitstop_timer = 0.026
+					GameEvents.phase_dash_used.emit(true, player.get_phase_ready_ratio())
+				continue
 			if scoring.is_indestructible() or spawn_grace_timer > 0.0 or in_autopilot:
 				continue
 			_trigger_impact_freeze(obs, eval["impact_point"] as Vector3)
@@ -389,6 +470,8 @@ func _evaluate_collisions(p0: Vector3, p1: Vector3) -> void:
 		if tier > SweptCollision.TIER_NONE:
 			var pts := scoring.register_graze(obs.id, tier, in_autopilot)
 			if pts > 0:
+				if tier == SweptCollision.TIER_DEATH_WISH:
+					player.refresh_phase_cooldown()
 				var g_pitch := 1.0 + minf(0.45, float(scoring.streak) * 0.025)
 				AudioSyncManager.play_sfx("graze_%d" % tier, g_pitch)
 				player.add_fov_punch(1.8 + float(tier) * 1.1)
@@ -404,7 +487,7 @@ func _evaluate_collisions(p0: Vector3, p1: Vector3) -> void:
 			AudioSyncManager.play_sfx("whoosh", clampf(current_speed / 60.0, 0.85, 1.35))
 
 
-func _check_flow_lock_cue() -> void:
+func _check_flow_lock_and_milestones() -> void:
 	if scoring.color_locked and not _was_flow_locked:
 		_was_flow_locked = true
 		AudioSyncManager.play_sfx("flow_lock")
@@ -412,6 +495,19 @@ func _check_flow_lock_cue() -> void:
 		flash_strength = maxf(flash_strength, 0.65)
 	elif not scoring.color_locked:
 		_was_flow_locked = false
+
+	var c_tier := 3 if scoring.chain_multiplier >= 8.0 else (2 if scoring.chain_multiplier >= 6.0 else (1 if scoring.chain_multiplier >= 4.0 else 0))
+	if c_tier > _milestone_chain_tier:
+		_milestone_chain_tier = c_tier
+		match c_tier:
+			1:
+				GameEvents.milestone_callout.emit("UNSTOPPABLE 4.0x!", Color("14f1d9"))
+			2:
+				GameEvents.milestone_callout.emit("GODLIKE 6.0x!", Color("ff2e93"))
+			3:
+				GameEvents.milestone_callout.emit("TRANSCENDENT 8.0x!", Color("facc15"))
+	elif scoring.chain_multiplier < 2.0:
+		_milestone_chain_tier = 0
 
 
 func _trigger_impact_freeze(obs: ObstacleData, impact_point: Vector3) -> void:
@@ -463,12 +559,14 @@ func _handle_stage_end() -> void:
 		ranked_lap += 1
 		spawn_grace_timer = 1.0
 		_passed_obstacles.clear()
+		_parried_ids.clear()
 		player.reset_at(0.0, Vector2(player.position_3d.x, player.position_3d.z) * 0.25)
 		tunnel_renderer.reset_tunnel(stage.tunnel_radius)
 		ring_manager.reset_with_stage(stage)
 		speed_particles.reset_particles(stage.tunnel_radius)
 		flash_color = Color("facc15")
 		flash_strength = 0.70
+		GameEvents.milestone_callout.emit("LAP %d  //  OVERDRIVE SPEED" % (ranked_lap + 1), Color("facc15"))
 		return
 
 	state = SessionState.CLEARED
@@ -500,8 +598,12 @@ func _sync_section_and_effects(depth_m: float) -> void:
 	var sec_idx := stage.section_index_at_depth(depth_m)
 	current_effect_mask = scoring.compute_effective_mask(stage, depth_m, ranked_lap)
 	if sec_idx != current_section_index:
+		var had_prev := current_section_index >= 0
 		current_section_index = sec_idx
 		GameEvents.section_changed.emit(sec_idx, current_effect_mask)
+		if had_prev and sec_idx > 0 and state == SessionState.PLAYING:
+			GameEvents.milestone_callout.emit("SECTION %d  //  VELOCITY UP" % (sec_idx + 1), Color("38bdf8"))
+			AudioSyncManager.play_sfx("section_up")
 
 
 func _is_in_transition_zone(depth_m: float) -> bool:
@@ -513,31 +615,6 @@ func _is_in_transition_zone(depth_m: float) -> bool:
 		if depth_m >= (bounds.y - gap) and depth_m <= bounds.y + 4.0:
 			return true
 	return false
-
-
-func _update_visual_frame(_delta: float) -> void:
-	tunnel_renderer.update_tunnel(
-		player.position_3d.y,
-		elapsed_time,
-		current_effect_mask,
-		AudioSyncManager.beat_phase,
-		AudioSyncManager.bass_energy,
-		scoring.flow_meter,
-		stage.palette,
-		stage.tunnel_radius
-	)
-	if effect_compositor != null and effect_compositor.has_method("apply_effects"):
-		effect_compositor.apply_effects(
-			current_effect_mask,
-			elapsed_time,
-			current_speed,
-			AudioSyncManager.beat_phase,
-			AudioSyncManager.bass_energy,
-			scoring.flow_meter,
-			boost_level,
-			flash_strength,
-			flash_color
-		)
 
 
 func retry_run() -> void:

@@ -2,13 +2,18 @@ class_name PlayerController
 extends Node3D
 ## First-person vertical dropper controller supporting screen-aligned Mouse/Keyboard/Gamepad steering
 ## under camera roll, zero double-integration drift, smooth cylindrical boundary slide,
-## dynamic boost FOV punch, and subtle micro-shake feedback.
+## Phase Dash blink/parry frames, dynamic boost FOV punch, and subtle micro-shake feedback.
 
 const PLAY_RADIUS := 8.6
 const KEY_MAX_SPEED := 26.0
 const KEY_ACCEL := 220.0
 const KEY_DAMP := 20.0
 const MOUSE_SCALE := 0.018
+
+const PHASE_DASH_DURATION := 0.16
+const PHASE_INVULN_DURATION := 0.16
+const PHASE_COOLDOWN_SEC := 1.60
+const PHASE_IMPULSE_M := 4.4
 
 var camera: Camera3D
 var position_3d: Vector3 = Vector3.ZERO
@@ -18,6 +23,12 @@ var spiral_roll_acc: float = 0.0
 var fov_punch: float = 0.0
 var shake_trauma: float = 0.0
 
+var phase_dash_timer: float = 0.0
+var phase_invuln_timer: float = 0.0
+var phase_cooldown: float = 0.0
+
+var _phase_dir_world: Vector2 = Vector2.ZERO
+var _last_steer_world: Vector2 = Vector2.ZERO
 var _bank_vel_x: float = 0.0
 var _shake_phase: float = 0.0
 var _pending_mouse_delta: Vector2 = Vector2.ZERO
@@ -54,6 +65,11 @@ func reset_at(depth_m: float, xz: Vector2 = Vector2.ZERO) -> void:
 	spiral_roll_acc = 0.0
 	fov_punch = 0.0
 	shake_trauma = 0.0
+	phase_dash_timer = 0.0
+	phase_invuln_timer = 0.0
+	phase_cooldown = 0.0
+	_phase_dir_world = Vector2.ZERO
+	_last_steer_world = Vector2.ZERO
 	_bank_vel_x = 0.0
 	_pending_mouse_delta = Vector2.ZERO
 	_sync_camera_transform()
@@ -74,6 +90,40 @@ func add_fov_punch(deg: float) -> void:
 
 func add_shake(amount: float) -> void:
 	shake_trauma = clampf(shake_trauma + amount, 0.0, 1.0)
+
+
+func trigger_phase_dash(dir_override: Vector2 = Vector2.ZERO) -> bool:
+	if phase_cooldown > 0.0:
+		return false
+	var chosen := dir_override
+	if chosen.length_squared() < 0.01:
+		if _last_steer_world.length_squared() > 0.05:
+			chosen = _last_steer_world
+		else:
+			var radial := Vector2(position_3d.x, position_3d.z)
+			if radial.length() > 3.2:
+				chosen = -radial.normalized()
+			else:
+				chosen = get_screen_axes_xz()["right"] as Vector2
+	_phase_dir_world = chosen.normalized()
+	phase_dash_timer = PHASE_DASH_DURATION
+	phase_invuln_timer = PHASE_INVULN_DURATION
+	phase_cooldown = PHASE_COOLDOWN_SEC
+	add_fov_punch(6.5)
+	add_shake(0.14)
+	return true
+
+
+func refresh_phase_cooldown() -> void:
+	phase_cooldown = 0.0
+
+
+func is_phase_invulnerable() -> bool:
+	return phase_invuln_timer > 0.0
+
+
+func get_phase_ready_ratio() -> float:
+	return 1.0 - clampf(phase_cooldown / PHASE_COOLDOWN_SEC, 0.0, 1.0)
 
 
 func get_screen_axes_xz() -> Dictionary:
@@ -101,6 +151,9 @@ func apply_input_and_step(
 	var prev_pos := position_3d
 	var mouse_delta := _pending_mouse_delta
 	_pending_mouse_delta = Vector2.ZERO
+
+	phase_invuln_timer = maxf(0.0, phase_invuln_timer - delta)
+	phase_cooldown = maxf(0.0, phase_cooldown - delta)
 
 	if autopilot:
 		var offset := autopilot_target_xz - Vector2(position_3d.x, position_3d.z)
@@ -141,6 +194,7 @@ func apply_input_and_step(
 		var screen_steer_world := right_xz * steer_vec.x + down_xz * steer_vec.y
 
 		if screen_steer_world.length_squared() > 0.001:
+			_last_steer_world = screen_steer_world.normalized()
 			velocity_xz += screen_steer_world * KEY_ACCEL * sens * delta
 			if velocity_xz.length() > KEY_MAX_SPEED:
 				velocity_xz = velocity_xz.normalized() * KEY_MAX_SPEED
@@ -155,10 +209,19 @@ func apply_input_and_step(
 			var my := -mouse_delta.y if SettingsManager.invert_y else mouse_delta.y
 			var mouse_screen := Vector2(mouse_delta.x, my) * MOUSE_SCALE * sens
 			var mouse_world := right_xz * mouse_screen.x + down_xz * mouse_screen.y
+			if mouse_world.length_squared() > 0.002:
+				_last_steer_world = mouse_world.normalized()
 			position_3d.x += mouse_world.x
 			position_3d.z += mouse_world.y
 			# Track horizontal mouse motion purely for visual bank roll — never double-integrate into velocity_xz!
 			instant_screen_vx += clampf(mouse_screen.x / maxf(delta, 0.004), -KEY_MAX_SPEED, KEY_MAX_SPEED) * 0.75
+
+		if phase_dash_timer > 0.0:
+			var dash_step := minf(delta, phase_dash_timer)
+			phase_dash_timer = maxf(0.0, phase_dash_timer - delta)
+			var dash_move := _phase_dir_world * (PHASE_IMPULSE_M / PHASE_DASH_DURATION) * dash_step
+			position_3d.x += dash_move.x
+			position_3d.z += dash_move.y
 
 		_bank_vel_x = lerpf(_bank_vel_x, instant_screen_vx, clampf(delta * 14.0, 0.0, 1.0))
 

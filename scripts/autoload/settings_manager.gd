@@ -202,11 +202,12 @@ func _ensure_input_actions() -> void:
 		"move_right": [KEY_D, KEY_RIGHT],
 		"move_up": [KEY_W, KEY_UP],
 		"move_down": [KEY_S, KEY_DOWN],
-		"pause": [KEY_ESCAPE],
+		"pause": [KEY_ESCAPE, KEY_P],
 		"retry": [KEY_R],
 		"place_checkpoint": [KEY_C],
 		"clear_checkpoint": [KEY_X],
 		"editor_play_here": [KEY_P, KEY_F5],
+		"boost": [KEY_SHIFT, KEY_SPACE],
 	}
 	for action_name in bindings.keys():
 		if not InputMap.has_action(action_name):
@@ -216,3 +217,7 @@ func _ensure_input_actions() -> void:
 				var ev := InputEventKey.new()
 				ev.keycode = int(keycode)
 				InputMap.action_add_event(action_name, ev)
+			if action_name == "boost":
+				var mb := InputEventMouseButton.new()
+				mb.button_index = MOUSE_BUTTON_LEFT
+				InputMap.action_add_event("boost", mb)

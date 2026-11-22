@@ -141,28 +141,32 @@ func _capture_gameplay_and_modes() -> void:
 	_metrics["fps_samples"]["normal_01_a"] = Engine.get_frames_per_second()
 	await _snap("05_normal_gameplay.png")
 
-	# 06 - Graze Popup & Flow Color Lock (trigger real graze sequence)
+	# 06 - Graze Popup, Flow Color Lock & Hyper-Boost streaks
+	gs.boost_override = 1
 	for i in range(6):
 		gs.scoring.register_graze("qa_g_%d" % i, SweptCollision.TIER_DEATH_WISH, false)
-	await _await_seconds(0.12)
+	await _await_seconds(0.18)
 	_metrics["checks"]["graze_flow_locked"] = gs.scoring.color_locked
 	_metrics["checks"]["graze_score"] = gs.scoring.score
 	await _snap("06_graze_and_flow.png")
+	gs.boost_override = -1
 
 	# 07 - Steer toward origin into first obstacle until IMPACT_FREEZE
-	gs.player.reset_at(38.0, Vector2.ZERO)
+	gs.player.reset_at(44.0, Vector2.ZERO)
 	var hit_seen := false
 	var ticks := 0
 	while ticks < 240:
-		await get_tree().physics_frame
+		await get_tree().process_frame
 		ticks += 1
 		if gs.state == GameSession.SessionState.IMPACT_FREEZE:
 			hit_seen = true
 			break
 	_metrics["checks"]["hit_triggered_freeze"] = hit_seen
 	if hit_seen:
+		gs.set_process(false)
 		gs.set_physics_process(false)
 		await _snap("07_impact_freeze.png")
+		gs.set_process(true)
 		gs.set_physics_process(true)
 		await _await_seconds(0.45)
 	_metrics["checks"]["dead_state_reached"] = (gs.state == GameSession.SessionState.DEAD)

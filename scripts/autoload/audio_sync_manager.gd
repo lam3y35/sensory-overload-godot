@@ -1,10 +1,10 @@
 extends Node
-## Procedural techno/industrial AudioStreamWAV synthesizer, BPM/FFT music sync,
-## procedural SFX cues, and Pause/Restart-on-Death audio state machine.
+## Procedural cyber-synthwave AudioStreamWAV synthesizer, BPM/FFT music sync,
+## pitch-scaled SFX cues, Menu Ambient mode, and Pause/Restart-on-Death FSM.
 ## [INDEPENDENT IMPLEMENTATION] Generates zero-crossing seamless loops with no external audio files.
 
 const SAMPLE_RATE := 22050
-const LOOP_BEATS := 4
+const LOOP_BEATS := 8
 
 const TRACK_TEMPOS: Array[float] = [124.0, 128.0, 134.0, 138.0, 142.0, 148.0, 152.0]
 const TRACK_TITLES: PackedStringArray = [
@@ -26,6 +26,8 @@ const SCALE_NOTES_HZ: Array[Array] = [
 	[110.0, 116.54, 146.83, 164.81, 174.61, 220.0], # A Phrygian industrial
 	[103.83, 123.47, 138.59, 155.56, 185.0, 207.65], # G# minor
 ]
+
+const CHORD_RATIOS: Array[float] = [1.0, 0.7937005, 1.189207, 0.8908987] # i -> VI -> III -> VII
 
 var current_track_index: int = 0
 var current_bpm: float = 128.0
@@ -53,7 +55,7 @@ func _ready() -> void:
 	_music_player.bus = &"Music"
 	add_child(_music_player)
 
-	for i in range(6):
+	for i in range(8):
 		var p := AudioStreamPlayer.new()
 		p.bus = &"SFX"
 		add_child(p)
@@ -99,9 +101,17 @@ func _process(delta: float) -> void:
 		high_energy = 0.35 + 0.35 * sin(total_beats * TAU * 2.0)
 
 
+func start_menu_ambient() -> void:
+	if _music_player != null:
+		_music_player.volume_db = -7.5
+	start_track(0, TRACK_TEMPOS[0], not is_playing)
+
+
 func start_track(track_idx: int, bpm_override: float = -1.0, force_restart: bool = true) -> void:
 	var idx := posmod(track_idx, TRACK_TEMPOS.size())
 	var bpm_val := bpm_override if bpm_override > 0.0 else TRACK_TEMPOS[idx]
+	if _music_player != null and force_restart:
+		_music_player.volume_db = 0.0
 	if not force_restart and is_playing and current_track_index == idx and is_equal_approx(current_bpm, bpm_val):
 		is_paused = false
 		if _music_player != null:
@@ -152,10 +162,11 @@ func stop_music() -> void:
 	is_playing = false
 	is_paused = false
 	if _music_player != null:
+		_music_player.volume_db = 0.0
 		_music_player.stop()
 
 
-func play_sfx(cue_name: String) -> void:
+func play_sfx(cue_name: String, pitch_scale: float = 1.0) -> void:
 	if DisplayServer.get_name() == "headless":
 		return
 	var stream := get_or_build_sfx_stream(cue_name)
@@ -164,6 +175,7 @@ func play_sfx(cue_name: String) -> void:
 	var p := _sfx_players[_sfx_cursor]
 	_sfx_cursor = (_sfx_cursor + 1) % _sfx_players.size()
 	p.stream = stream
+	p.pitch_scale = clampf(pitch_scale, 0.5, 2.0)
 	p.play()
 
 
@@ -180,48 +192,82 @@ func get_or_build_track_stream(track_idx: int, bpm_override: float = -1.0) -> Au
 	pcm.resize(total_samples * 2)
 
 	var scale: Array = SCALE_NOTES_HZ[idx]
-	var arp_order := [0, 2, 4, 5, 3, 2, 1, 4]
+	var arp_order := [0, 2, 4, 5, 3, 2, 4, 1, 0, 3, 5, 4, 2, 1, 3, 5]
 	var bass_phase := 0.0
+	var pad_phase_a := 0.0
+	var pad_phase_b := 0.0
+	var pad_phase_c := 0.0
 	var arp_phase := 0.0
+	var kick_phase := 0.0
+	var bass_lp := 0.0
+	var pad_lp := 0.0
+	var arp_lp := 0.0
+	var snare_lp := 0.0
 	var noise_state := 1337 + idx * 97
-	const FADE_SAMPLES := 48
+	const FADE_SAMPLES := 32
 
 	for i in range(total_samples):
 		var t_sec := float(i) / float(SAMPLE_RATE)
 		var beat_pos := t_sec / beat_sec
+		var beat_num := int(floor(beat_pos))
 		var beat_frac := fmod(beat_pos, 1.0)
+		var chord_idx := (beat_num / 2) % CHORD_RATIOS.size()
+		var chord_ratio: float = CHORD_RATIOS[chord_idx]
+
 		var sixteenth_idx := int(floor(beat_pos * 4.0))
 		var sixteenth_frac := fmod(beat_pos * 4.0, 1.0)
 
-		# 1) Punchy four-on-the-floor techno kick
-		var kick_freq := 46.0 + 130.0 * exp(-beat_frac * 28.0)
-		var kick_env := exp(-beat_frac * 7.5)
-		var kick := sin(TAU * kick_freq * beat_frac * beat_sec) * kick_env * 0.56
+		# 1) Punchy four-on-the-floor kick with smooth continuous phase
+		var kick_freq := 46.0 + 135.0 * exp(-beat_frac * 28.0)
+		kick_phase += kick_freq / float(SAMPLE_RATE)
+		if beat_frac < (1.0 / float(SAMPLE_RATE)) * 2.0:
+			kick_phase = 0.0
+		var kick_env := exp(-beat_frac * 7.8)
+		var kick := sin(TAU * kick_phase) * kick_env * 0.52
 
-		# 2) Sidechained rolling sub-bassline
-		var root_hz := float(scale[0]) * 0.5
-		if (int(floor(beat_pos)) % 4) >= 2:
-			root_hz = float(scale[2]) * 0.5
+		# 2) Warm 1-pole LP-filtered rolling synthwave sub+saw bass across 4 chords
+		var root_hz := float(scale[0]) * 0.5 * chord_ratio
 		bass_phase += root_hz / float(SAMPLE_RATE)
-		var sidechain := clampf(beat_frac * 3.2, 0.12, 1.0)
-		var bass_saw := (fmod(bass_phase, 1.0) * 2.0 - 1.0) * 0.6 + sin(TAU * bass_phase) * 0.4
-		var bass := bass_saw * sidechain * 0.28
+		var raw_saw := (fmod(bass_phase, 1.0) * 2.0 - 1.0)
+		var bass_cutoff := 0.08 + 0.14 * (1.0 - fmod(beat_pos * 2.0, 1.0))
+		bass_lp += bass_cutoff * (raw_saw - bass_lp)
+		var sidechain := clampf(beat_frac * 3.4, 0.14, 1.0)
+		var bass := (bass_lp * 0.55 + sin(TAU * bass_phase) * 0.45) * sidechain * 0.30
 
-		# 3) Driving 16th-note rave arpeggio
-		var note_hz := float(scale[int(arp_order[(sixteenth_idx + idx) % arp_order.size()])]) * 2.0
+		# 3) Detuned supersaw filtered chord pad + fifth harmonic layer
+		var pad_hz := root_hz * 2.0
+		pad_phase_a += (pad_hz * 0.994) / float(SAMPLE_RATE)
+		pad_phase_b += (pad_hz * 1.006) / float(SAMPLE_RATE)
+		pad_phase_c += (pad_hz * 1.498) / float(SAMPLE_RATE)
+		var pad_raw := ((fmod(pad_phase_a, 1.0) * 2.0 - 1.0) + (fmod(pad_phase_b, 1.0) * 2.0 - 1.0) + sin(TAU * pad_phase_c) * 0.7) * 0.35
+		pad_lp += 0.075 * (pad_raw - pad_lp)
+		var pad := pad_lp * sidechain * 0.18
+
+		# 4) Warm melodic filtered pluck arpeggio (soft attack + decaying timbre, no raw square buzz)
+		var note_hz := float(scale[int(arp_order[(sixteenth_idx + idx) % arp_order.size()])]) * chord_ratio * 2.0
 		arp_phase += note_hz / float(SAMPLE_RATE)
-		var arp_env := exp(-sixteenth_frac * 5.2)
-		var arp := (1.0 if fmod(arp_phase, 1.0) < 0.35 else -1.0) * arp_env * 0.16
+		var arp_raw := (fmod(arp_phase, 1.0) * 2.0 - 1.0) * 0.55 + sin(TAU * arp_phase) * 0.45
+		var arp_cut := clampf(0.28 * exp(-sixteenth_frac * 4.5) + 0.05, 0.04, 0.34)
+		arp_lp += arp_cut * (arp_raw - arp_lp)
+		var arp_env := smoothstep_sample(0.0, 0.06, sixteenth_frac) * exp(-sixteenth_frac * 4.8)
+		var arp := arp_lp * arp_env * 0.22
 
-		# 4) Off-beat crisp hi-hat (deterministic LCG noise)
+		# 5) Crisp electronic snare/clap on beats 2, 4, 6, 8 + 16th-note groove hi-hats + bar-end fill
 		noise_state = (noise_state * 1103515245 + 12345) & 0x7FFFFFFF
 		var white := (float(noise_state % 2000) / 1000.0) - 1.0
-		var hat_env := exp(-fmod(beat_pos + 0.5, 1.0) * 26.0)
-		var hat := white * hat_env * 0.12
+		snare_lp += 0.24 * (white - snare_lp)
+		var snare_on := 1.0 if (beat_num % 2) == 1 else 0.0
+		var snare_fill := 1.0 if (beat_pos >= 7.5 and beat_frac >= 0.5) else 0.0
+		var snare_frac := fmod(beat_pos * 2.0, 1.0) if snare_fill > 0.5 else beat_frac
+		var snare := snare_lp * exp(-snare_frac * 15.0) * maxf(snare_on, snare_fill) * 0.18
 
-		var mixed := tanh((kick + bass + arp + hat) * 1.15) * 0.85
+		var hat_frac := fmod(beat_pos + 0.5, 1.0)
+		var hat_hp := white - snare_lp
+		var hat := hat_hp * exp(-hat_frac * 28.0) * 0.11
 
-		# Smooth zero-crossing edge envelope guarantees zero click/crackle at loop seam
+		var mixed := tanh((kick + bass + pad + arp + snare + hat) * 1.12) * 0.84
+
+		# Seamless 32-sample (~1.4 ms) cosine edge envelope guarantees zero click at loop seam
 		if i < FADE_SAMPLES:
 			var w := 0.5 - 0.5 * cos(PI * float(i) / float(FADE_SAMPLES))
 			mixed *= w
@@ -253,21 +299,33 @@ func get_or_build_sfx_stream(cue_name: String) -> AudioStreamWAV:
 	var f0 := 520.0
 	var f1 := 880.0
 	var is_noise := false
+	var mode := "tone"
+
 	match cue_name:
 		"graze_1":
-			dur = 0.11; f0 = 560.0; f1 = 760.0
+			dur = 0.12; f0 = 580.0; f1 = 840.0
 		"graze_2":
-			dur = 0.15; f0 = 720.0; f1 = 1080.0
+			dur = 0.16; f0 = 760.0; f1 = 1180.0
 		"graze_3":
-			dur = 0.22; f0 = 880.0; f1 = 1520.0
+			dur = 0.24; f0 = 920.0; f1 = 1640.0; mode = "chord"
+		"ring":
+			dur = 0.22; f0 = 660.0; f1 = 1320.0; mode = "chord"
+		"flow_lock":
+			dur = 0.36; f0 = 440.0; f1 = 1100.0; mode = "arpeggio"
+		"boost_on":
+			dur = 0.20; f0 = 220.0; f1 = 740.0; is_noise = true
+		"whoosh":
+			dur = 0.14; f0 = 320.0; f1 = 110.0; is_noise = true; mode = "air"
 		"checkpoint":
-			dur = 0.16; f0 = 440.0; f1 = 880.0
+			dur = 0.18; f0 = 523.25; f1 = 783.99; mode = "chord"
 		"clear":
-			dur = 0.42; f0 = 523.25; f1 = 1046.5
+			dur = 0.52; f0 = 523.25; f1 = 1046.5; mode = "arpeggio"
 		"death":
-			dur = 0.34; f0 = 190.0; f1 = 38.0; is_noise = true
+			dur = 0.38; f0 = 185.0; f1 = 36.0; is_noise = true
 		"ui_click":
-			dur = 0.05; f0 = 640.0; f1 = 420.0
+			dur = 0.05; f0 = 720.0; f1 = 480.0
+		"ui_hover":
+			dur = 0.03; f0 = 920.0; f1 = 1040.0
 		_:
 			dur = 0.10; f0 = 480.0; f1 = 620.0
 
@@ -275,19 +333,31 @@ func get_or_build_sfx_stream(cue_name: String) -> AudioStreamWAV:
 	var pcm := PackedByteArray()
 	pcm.resize(total * 2)
 	var phase := 0.0
+	var phase2 := 0.0
+	var lp := 0.0
 	var n_state := 9187
 
 	for i in range(total):
 		var u := float(i) / float(maxi(1, total - 1))
 		var freq := lerpf(f0, f1, u)
+		if mode == "arpeggio":
+			var step_mult := 1.0 if u < 0.33 else (1.25 if u < 0.66 else 1.5)
+			freq = f0 * step_mult
 		phase += freq / float(SAMPLE_RATE)
-		var env := sin(PI * minf(1.0, u * 6.0)) * exp(-u * 4.5)
+		phase2 += (freq * 1.5) / float(SAMPLE_RATE)
+		var env := sin(PI * minf(1.0, u * 7.0)) * exp(-u * 4.2)
 		var sig := sin(TAU * phase)
+		if mode == "chord":
+			sig = sig * 0.62 + sin(TAU * phase2) * 0.38
+		elif mode == "air":
+			sig = 0.0
 		if is_noise:
 			n_state = (n_state * 1103515245 + 12345) & 0x7FFFFFFF
 			var w := (float(n_state % 2000) / 1000.0) - 1.0
-			sig = sig * 0.55 + w * 0.45
-		var val := sig * env * 0.65
+			lp += 0.22 * (w - lp)
+			sig = lp * 0.85 if mode == "air" else (sig * 0.58 + lp * 0.42)
+		var amp := 0.38 if mode == "air" else 0.66
+		var val := sig * env * amp
 		pcm.encode_s16(i * 2, clampi(int(round(val * 32767.0)), -32768, 32767))
 
 	var wav := AudioStreamWAV.new()
@@ -300,27 +370,29 @@ func get_or_build_sfx_stream(cue_name: String) -> AudioStreamWAV:
 	return wav
 
 
+static func smoothstep_sample(edge0: float, edge1: float, x: float) -> float:
+	var t := clampf((x - edge0) / (edge1 - edge0), 0.0, 1.0)
+	return t * t * (3.0 - 2.0 * t)
+
+
 func _ensure_audio_buses() -> void:
-	if AudioServer.get_bus_index(&"Music") < 0:
-		var idx := AudioServer.bus_count
-		AudioServer.add_bus(idx)
-		AudioServer.set_bus_name(idx, &"Music")
-		AudioServer.set_bus_send(idx, &"Master")
-	if AudioServer.get_bus_index(&"SFX") < 0:
-		var idx := AudioServer.bus_count
-		AudioServer.add_bus(idx)
-		AudioServer.set_bus_name(idx, &"SFX")
-		AudioServer.set_bus_send(idx, &"Master")
+	for bus_name in [&"Music", &"SFX"]:
+		if AudioServer.get_bus_index(bus_name) < 0:
+			AudioServer.add_bus()
+			var idx := AudioServer.get_bus_count() - 1
+			AudioServer.set_bus_name(idx, bus_name)
+			AudioServer.set_bus_send(idx, &"Master")
 
 	var music_idx := AudioServer.get_bus_index(&"Music")
 	if music_idx >= 0:
 		var has_spec := false
-		for i in range(AudioServer.get_bus_effect_count(music_idx)):
-			if AudioServer.get_bus_effect(music_idx, i) is AudioEffectSpectrumAnalyzer:
+		for e_idx in range(AudioServer.get_bus_effect_count(music_idx)):
+			if AudioServer.get_bus_effect(music_idx, e_idx) is AudioEffectSpectrumAnalyzer:
 				has_spec = true
-				_spectrum_inst = AudioServer.get_bus_effect_instance(music_idx, i) as AudioEffectSpectrumAnalyzerInstance
+				_spectrum_inst = AudioServer.get_bus_effect_instance(music_idx, e_idx) as AudioEffectSpectrumAnalyzerInstance
 				break
 		if not has_spec:
 			var spec := AudioEffectSpectrumAnalyzer.new()
-			AudioServer.add_bus_effect(music_idx, spec, 0)
-			_spectrum_inst = AudioServer.get_bus_effect_instance(music_idx, 0) as AudioEffectSpectrumAnalyzerInstance
+			spec.fft_size = AudioEffectSpectrumAnalyzer.FFT_SIZE_512
+			AudioServer.add_bus_effect(music_idx, spec)
+			_spectrum_inst = AudioServer.get_bus_effect_instance(music_idx, AudioServer.get_bus_effect_count(music_idx) - 1) as AudioEffectSpectrumAnalyzerInstance

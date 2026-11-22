@@ -8,6 +8,7 @@ const ACTIVE_BEHIND_M := 14.0
 
 var local_time: float = 0.0
 var highlighted_obstacle_id: String = ""
+var _last_player_y: float = 0.0
 
 var _shader: Shader
 var _unit_box: BoxMesh
@@ -59,6 +60,7 @@ func step_and_sync(
 ) -> void:
 	_ensure_shared_resources()
 	local_time += delta
+	_last_player_y = player_y
 	_active_cache.clear()
 	if _stage == null:
 		return
@@ -145,6 +147,7 @@ func _sync_visual_entry(
 		var acc := obs.color_primary if use_accent else obs.color_accent
 
 		mat.set_shader_parameter("u_time", local_time)
+		mat.set_shader_parameter("u_player_y", _last_player_y)
 		mat.set_shader_parameter("u_beat_phase", beat_phase)
 		mat.set_shader_parameter("u_bass_energy", bass_energy)
 		mat.set_shader_parameter("u_opacity_override", SettingsManager.obstacle_opacity)
@@ -154,6 +157,8 @@ func _sync_visual_entry(
 		mat.set_shader_parameter("u_flow_locked", 1.0 if flow_locked else 0.0)
 		mat.set_shader_parameter("u_color_primary", prim)
 		mat.set_shader_parameter("u_color_accent", acc)
+		var bg_col := _stage.palette[2] if (_stage != null and _stage.palette.size() > 2) else Color("080314")
+		mat.set_shader_parameter("u_color_bg", bg_col)
 		mat.set_shader_parameter("u_layer_alpha", float(p.get("layer_alpha", 1.0)))
 
 
@@ -184,13 +189,13 @@ static func compute_parts(
 			var open_col := posmod(obs.seed_int, 3)
 			var open_row := posmod(obs.seed_int / 3, 3)
 			var cell := 4.4
-			# Horizontal and vertical dividers + selective cell blockers leaving clear navigable gaps
+			# Horizontal and vertical dividers + selective cell blockers leaving clear navigable gaps (non-coplanar Y extents avoid Z-fighting)
 			for r in range(4):
 				var z_off := (-1.5 + float(r)) * cell
 				parts.append(_make_part(base_pos, rot_full, Vector3(0.0, 0.0, z_off), Basis.IDENTITY, Vector3(span, 0.45, 0.48), sc, 1.0, (r % 2) == 1))
 			for c in range(4):
 				var x_off := (-1.5 + float(c)) * cell
-				parts.append(_make_part(base_pos, rot_full, Vector3(x_off, 0.0, 0.0), Basis.IDENTITY, Vector3(0.48, 0.45, span), sc, 1.0, (c % 2) == 0))
+				parts.append(_make_part(base_pos, rot_full, Vector3(x_off, 0.0, 0.0), Basis.IDENTITY, Vector3(0.48, 0.49, span), sc, 1.0, (c % 2) == 0))
 			for gx in range(3):
 				for gz in range(3):
 					if gx == open_col and gz == open_row:
@@ -199,13 +204,13 @@ static func compute_parts(
 						continue
 					var cx := (-1.0 + float(gx)) * cell
 					var cz := (-1.0 + float(gz)) * cell
-					parts.append(_make_part(base_pos, rot_full, Vector3(cx, 0.0, cz), Basis.IDENTITY, Vector3(1.55, 0.42, 1.55), sc, 0.96, ((gx + gz) % 2) == 1))
+					parts.append(_make_part(base_pos, rot_full, Vector3(cx, 0.0, cz), Basis.IDENTITY, Vector3(1.55, 0.41, 1.55), sc, 0.96, ((gx + gz) % 2) == 1))
 
 		"cross_bars":
 			var spin := Basis(Vector3.UP, t_sec * sp * 1.45 + ph)
 			var rot_full := (base_rot * spin).orthonormalized()
 			parts.append(_make_part(base_pos, rot_full, Vector3.ZERO, Basis.IDENTITY, Vector3(span, 0.55, 0.95), sc, 1.0, false))
-			parts.append(_make_part(base_pos, rot_full, Vector3.ZERO, Basis.IDENTITY, Vector3(0.95, 0.55, span), sc, 1.0, true))
+			parts.append(_make_part(base_pos, rot_full, Vector3.ZERO, Basis.IDENTITY, Vector3(0.95, 0.59, span), sc, 1.0, true))
 
 		"iris_ring":
 			var pulse := 1.0 + 0.34 * amp * sin(t_sec * sp * 2.4 + beat_phase * TAU * 0.5 + ph)
@@ -249,7 +254,7 @@ static func compute_parts(
 			parts.append(_make_part(base_pos, base_rot, Vector3(-span * 0.72, 0.0, 0.0), Basis.IDENTITY, Vector3(0.65, 0.65, span), sc, 1.0, true))
 			parts.append(_make_part(base_pos, base_rot, Vector3(span * 0.72, 0.0, 0.0), Basis.IDENTITY, Vector3(0.65, 0.65, span), sc, 1.0, true))
 			# Slamming blade
-			parts.append(_make_part(base_pos, base_rot, Vector3(0.0, 0.0, blade_z), Basis.IDENTITY, Vector3(span * 0.70, 0.42, 1.95), sc, 1.0, false))
+			parts.append(_make_part(base_pos, base_rot, Vector3(0.0, 0.0, blade_z), Basis.IDENTITY, Vector3(span * 0.70, 0.44, 1.95), sc, 1.0, false))
 
 		"drifting_ghost":
 			var gx := 4.8 * amp * sin(t_sec * sp * 1.3 + ph)

@@ -1,9 +1,17 @@
 class_name CrosshairDrawer
 extends Control
-## Procedural vector crosshair renderer supporting Dot, Cross, Ring, and Outlined Plus
-## driven live by SettingsManager color, size, and thickness overrides.
+## Precision eye-centered cyber-HUD reticle displaying live Flow Lock arc,
+## Boost/Chain crescent, and normalized tunnel margin indicator around the aim point.
 
 var preview_mode: bool = false
+var show_telemetry: bool = false
+var flow_ratio: float = 0.0
+var flow_locked: bool = false
+var chain_ratio: float = 0.0
+var chain_mult: float = 1.0
+var boost_ratio: float = 0.0
+var beat_kick: float = 0.0
+var tunnel_pos_norm: Vector2 = Vector2.ZERO
 
 
 func _ready() -> void:
@@ -11,12 +19,55 @@ func _ready() -> void:
 	GameEvents.settings_changed.connect(queue_redraw)
 
 
+func update_telemetry(
+	p_flow: float,
+	p_flow_locked: bool,
+	p_chain_ratio: float,
+	p_chain_mult: float,
+	p_boost_ratio: float,
+	p_beat_kick: float,
+	p_tunnel_norm: Vector2
+) -> void:
+	show_telemetry = true
+	flow_ratio = clampf(p_flow, 0.0, 1.0)
+	flow_locked = p_flow_locked
+	chain_ratio = clampf(p_chain_ratio, 0.0, 1.0)
+	chain_mult = p_chain_mult
+	boost_ratio = clampf(p_boost_ratio, 0.0, 1.0)
+	beat_kick = clampf(p_beat_kick, 0.0, 1.0)
+	tunnel_pos_norm = p_tunnel_norm
+	queue_redraw()
+
+
 func _draw() -> void:
 	var c := size * 0.5
 	var col := SettingsManager.crosshair_color
-	var sz := SettingsManager.crosshair_size
+	var sz := SettingsManager.crosshair_size * (1.0 + boost_ratio * 0.14 + beat_kick * 0.06)
 	var th := SettingsManager.crosshair_thickness
 	var shape := SettingsManager.crosshair_shape
+
+	if show_telemetry and not preview_mode:
+		var arc_r := 28.0 + boost_ratio * 4.5 + beat_kick * 1.5
+		# Subtle tunnel clearance boundary circle + cockpit position dot
+		draw_arc(c, arc_r, 0.0, TAU, 40, Color(0.75, 0.88, 1.0, 0.14), 1.4)
+		var dot_pos := c + tunnel_pos_norm.limit_length(1.0) * (arc_r - 6.0)
+		var dot_col := Color("facc15") if boost_ratio > 0.25 else Color("14f1d9")
+		draw_circle(dot_pos, 3.0, Color(0.0, 0.0, 0.0, 0.75))
+		draw_circle(dot_pos, 2.1, dot_col)
+
+		# Right crescent: Flow Meter (Cyan -> blazing Gold when Color Locked)
+		var flow_bg := Color(0.05, 0.04, 0.12, 0.55)
+		draw_arc(c, arc_r, -0.78, 0.78, 18, flow_bg, 4.2)
+		if flow_ratio > 0.01:
+			var f_col := Color("facc15") if flow_locked else Color("14f1d9")
+			draw_arc(c, arc_r, -0.78, lerpf(-0.78, 0.78, flow_ratio), 18, f_col, 2.8)
+
+		# Left crescent: Boost / Chain Timer Meter
+		draw_arc(c, arc_r, PI - 0.78, PI + 0.78, 18, flow_bg, 4.2)
+		var left_fill := maxf(boost_ratio, chain_ratio)
+		if left_fill > 0.01:
+			var b_col := Color("facc15") if boost_ratio > 0.15 else Color("ff2e93")
+			draw_arc(c, arc_r, PI + 0.78, lerpf(PI + 0.78, PI - 0.78, left_fill), 18, b_col, 2.8)
 
 	match shape:
 		SettingsManager.CrosshairShape.DOT:

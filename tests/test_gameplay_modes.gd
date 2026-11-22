@@ -16,6 +16,7 @@ func run_suite(runner: Node) -> Dictionary:
 	_test_zen_section_advancement_and_indestructibility(runner)
 	_test_practice_checkpoints(runner)
 	_test_ranked_speed_escalation_and_lap(runner)
+	_test_boost_and_energy_rings(runner)
 	_test_delayed_death_freeze(runner)
 	return {"passed": _passed, "failed": _failed}
 
@@ -122,6 +123,44 @@ func _test_ranked_speed_escalation_and_lap(runner: Node) -> void:
 	_assert_true(gs.ranked_lap >= 1 and gs.state == GameSession.SessionState.PLAYING,
 		"Ranked mode wraps endlessly across stage boundary into lap 1+")
 	_assert_true(lap1_speed > initial_speed, "Ranked mode escalates descent speed over depth and laps")
+	gs.queue_free()
+
+
+func _test_boost_and_energy_rings(runner: Node) -> void:
+	var st := _build_two_section_test_stage(999.0)
+	var gs := GameSession.new()
+	runner.add_child(gs)
+
+	# 1) Measure normal baseline speed and score over 0.5s
+	gs.start_session({"stage_data": st, "mode": ScoringManager.MODE_NORMAL})
+	gs.boost_override = 0
+	for _i in range(30):
+		gs.step_simulation(1.0 / 60.0)
+	var normal_spd := gs.current_speed
+	var normal_score := gs.scoring.score
+
+	# 2) Measure Hyper-Boost speed and distance score over 0.5s
+	gs.start_session({"stage_data": st, "mode": ScoringManager.MODE_NORMAL})
+	gs.boost_override = 1
+	for _i in range(30):
+		gs.step_simulation(1.0 / 60.0)
+	var boost_spd := gs.current_speed
+	var boost_score := gs.scoring.score
+	_assert_true(boost_spd > normal_spd * 1.35, "Hyper-Boost accelerates descent velocity significantly (%.1f > %.1f)" % [boost_spd, normal_spd])
+	_assert_true(boost_score > normal_score * 2, "Hyper-Boost doubles descent distance score rate (%d > %d)" % [boost_score, normal_score])
+
+	# 3) Verify RingManager generation and check_collect pickup + ScoringManager reward
+	var rings: Array[Dictionary] = gs.ring_manager.get_rings()
+	_assert_true(rings.size() >= 1, "RingManager generates deterministic Energy Rings across stage")
+	var first_ring: Dictionary = rings[0]
+	var rd := float(first_ring["depth"])
+	var rxz := first_ring["xz"] as Vector2
+	var res: Dictionary = gs.ring_manager.check_collect(Vector3(rxz.x, -(rd - 1.5), rxz.y), Vector3(rxz.x, -(rd + 1.5), rxz.y))
+	_assert_true(bool(res["collected"]), "RingManager detects swept trajectory passing through Energy Ring")
+	var prev_streak := gs.scoring.streak
+	var r_pts := gs.scoring.register_ring(str(res["id"]), false)
+	_assert_true(r_pts >= 300 and gs.scoring.rings_collected == 1 and gs.scoring.streak == prev_streak + 1,
+		"Ring collection awards >= 300 base pts, increments rings_collected, and builds streak")
 	gs.queue_free()
 
 

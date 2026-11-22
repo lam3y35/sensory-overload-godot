@@ -9,7 +9,7 @@ uniform float u_flow = 0.0;
 uniform float u_flow_locked = 0.0;
 uniform vec4 u_color_primary : source_color = vec4(0.08, 0.95, 0.85, 1.0);
 uniform vec4 u_color_accent : source_color = vec4(1.0, 0.18, 0.58, 1.0);
-uniform vec4 u_color_bg : source_color = vec4(0.05, 0.02, 0.12, 1.0);
+uniform vec4 u_color_bg : source_color = vec4(0.03, 0.015, 0.08, 1.0);
 
 uniform float u_bit_breathing = 0.0;
 uniform float u_bit_twist = 0.0;
@@ -38,67 +38,79 @@ void vertex() {
 	v_depth_rel = max(0.0, rel_y);
 
 	vec3 pos = VERTEX;
-	// Beat scale pulse on individual voxel wall blocks
 	float beat_kick = exp(-u_beat_phase * 4.5);
-	pos *= 1.0 + u_bit_pulse * 0.14 * (0.4 * beat_kick + 0.6 * u_bass_energy);
+	pos *= 1.0 + u_bit_pulse * 0.10 * (0.4 * beat_kick + 0.6 * u_bass_energy);
 
 	vec4 wp = MODEL_MATRIX * vec4(pos, 1.0);
 
-	// Breathing radial expansion/contraction along tunnel depth
-	float breath = sin(rel_y * 0.12 - u_time * 3.1) * 0.85 * u_bit_breathing;
+	// Smooth radial breathing without wall clipping
+	float breath = sin(rel_y * 0.11 - u_time * 2.8) * 0.72 * u_bit_breathing;
 	vec2 radial_dir = normalize(wp.xz + vec2(0.0001));
 	wp.xz += radial_dir * breath;
 
-	// Axial corkscrew twist with depth
-	float twist_angle = rel_y * 0.018 * u_bit_twist * sin(u_time * 0.65 + 0.7);
+	// Smooth axial corkscrew twist down depth
+	float twist_angle = rel_y * 0.016 * u_bit_twist * sin(u_time * 0.55 + 0.7);
 	float ct = cos(twist_angle);
 	float st = sin(twist_angle);
 	wp.xz = mat2(vec2(ct, -st), vec2(st, ct)) * wp.xz;
 
-	// Serpentine tunnel wobble ahead of player
-	wp.x += sin(rel_y * 0.055 - u_time * 2.4) * 1.45 * u_bit_wobble;
-	wp.z += cos(rel_y * 0.048 - u_time * 2.0) * 1.45 * u_bit_wobble;
+	// Smooth serpentine tunnel wobble ahead of player
+	wp.x += sin(rel_y * 0.050 - u_time * 2.2) * 1.25 * u_bit_wobble;
+	wp.z += cos(rel_y * 0.044 - u_time * 1.9) * 1.25 * u_bit_wobble;
 
 	v_world_pos = wp.xyz;
 	VERTEX = (inverse(MODEL_MATRIX) * wp).xyz;
 }
 
 void fragment() {
-	float beat_kick = exp(-u_beat_phase * 4.0);
+	float beat_kick = exp(-u_beat_phase * 4.2);
 	float ring_idx = v_custom.r;
 	float alt_flag = v_custom.g;
 
-	vec3 c_prim = u_color_primary.rgb;
-	vec3 c_acc = u_color_accent.rgb;
-	if (u_bit_palette_cycle > 0.5 || u_flow_locked > 0.5) {
-		float shift = u_time * (0.55 + 0.9 * u_flow_locked) + ring_idx * 0.35;
-		c_prim = hue_rotate(c_prim, shift);
-		c_acc = hue_rotate(c_acc, shift * 1.15);
+	// Deep obsidian/midnight backdrop mixed with neon trim so obstacles always dominate figure-ground
+	vec3 bg_dark = clamp(u_color_bg.rgb * 0.85, vec3(0.012, 0.006, 0.03), vec3(0.14, 0.10, 0.22));
+	vec3 trim_prim = u_color_primary.rgb;
+	vec3 trim_acc = u_color_accent.rgb;
+
+	if (u_bit_palette_cycle > 0.5) {
+		float shift = sin(u_time * 0.45 + ring_idx * 0.12) * 0.48;
+		trim_prim = hue_rotate(trim_prim, shift);
+		trim_acc = hue_rotate(trim_acc, shift * 1.15);
 	}
 
-	// Checkerboard alternation + subtle voxel bevel
-	float checker = mix(0.35, 1.0, alt_flag);
+	// Electric Overdrive palette when Flow Color Lock is active (deep indigo + cyan/magenta/gold seams)
+	if (u_flow_locked > 0.5) {
+		bg_dark = mix(bg_dark, vec3(0.04, 0.02, 0.14), 0.75);
+		trim_prim = mix(vec3(0.08, 0.96, 0.90), vec3(0.98, 0.82, 0.22), 0.35 + 0.35 * sin(u_time * 4.0 + ring_idx * 0.25));
+		trim_acc = vec3(1.0, 0.18, 0.62);
+	}
+
+	// Architectural tiled metallic luminance variation (zero harsh binary strobe)
+	float panel_var = mix(0.16, 0.30, alt_flag);
 	if (u_bit_checker > 0.5) {
-		float scroll = step(0.5, fract(ring_idx * 0.5 - u_time * 1.8));
-		checker = mix(0.22, 1.0, abs(alt_flag - scroll));
+		float wave_tile = 0.5 + 0.5 * sin(ring_idx * 1.05 - u_time * 2.4);
+		panel_var = mix(0.14, 0.32, mix(alt_flag, wave_tile, 0.45));
 	}
 
 	vec2 edge_dist = min(UV, 1.0 - UV);
 	float edge_min = min(edge_dist.x, edge_dist.y);
-	float bevel = smoothstep(0.0, 0.14, edge_min);
-	float wire = 1.0 - smoothstep(0.02, 0.085, edge_min);
+	float inner_bevel = smoothstep(0.0, 0.16, edge_min);
+	float seam_line = 1.0 - smoothstep(0.012, 0.068, edge_min);
 
-	vec3 base_col = mix(u_color_bg.rgb * 1.8, mix(c_prim, c_acc, alt_flag), checker);
-	base_col *= mix(0.68, 1.08, bevel);
+	// Smooth traveling synthwave energy rings moving down the shaft
+	float energy_ring = exp(-pow(fract(ring_idx * 0.085 - u_time * 1.5) - 0.5, 2.0) * 18.0);
+	float ring_pulse = energy_ring * (0.45 + 0.55 * beat_kick + 0.45 * u_bass_energy);
 
-	// Wireframe glow overlay + beat music-lock pulse
-	float glow_boost = u_bit_wireframe * wire * (1.2 + 0.8 * beat_kick);
-	float lock_boost = u_flow_locked * beat_kick * 0.45;
-	vec3 final_col = base_col + c_acc * glow_boost + mix(c_prim, c_acc, 0.5) * lock_boost;
+	vec3 panel_tint = mix(trim_prim, trim_acc, alt_flag);
+	vec3 wall_base = mix(bg_dark, bg_dark * 1.35 + panel_tint * 0.22, panel_var) * mix(0.76, 1.06, inner_bevel);
 
-	// Depth fog fade down the shaft
-	float fog_dist = mix(155.0, 115.0 + 30.0 * sin(u_time * 4.0), u_bit_depth_fog);
-	float fog_t = clamp(v_depth_rel / max(40.0, fog_dist), 0.0, 1.0);
-	fog_t = pow(fog_t, 1.45);
-	ALBEDO = mix(final_col, u_color_bg.rgb, fog_t);
+	vec3 seam_col = mix(trim_prim, trim_acc, alt_flag * 0.75);
+	float seam_strength = 0.34 + 0.46 * ring_pulse + u_bit_wireframe * 0.65 + u_flow_locked * (0.35 + 0.35 * beat_kick);
+	vec3 final_col = wall_base + seam_col * seam_line * seam_strength + seam_col * energy_ring * 0.18;
+
+	// Deep void fog fading distant rings seamlessly into darkness
+	float fog_dist = mix(158.0, 124.0 + 18.0 * sin(u_time * 2.8), u_bit_depth_fog);
+	float fog_t = clamp((v_depth_rel - 18.0) / max(45.0, fog_dist), 0.0, 1.0);
+	fog_t = pow(fog_t, 1.40);
+	ALBEDO = mix(final_col, bg_dark * 0.65, fog_t);
 }

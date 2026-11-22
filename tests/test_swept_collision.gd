@@ -17,6 +17,7 @@ func run_suite(runner: Node) -> Dictionary:
 	_test_all_ten_archetypes_parts()
 	_test_pendulum_swings_laterally()
 	_test_player_boundary_anti_lockup(runner)
+	_test_rolled_screen_steering_and_no_mouse_drift(runner)
 	_test_tunnel_and_obstacle_scene_instantiation(runner)
 	return {"passed": _passed, "failed": _failed}
 
@@ -142,6 +143,39 @@ func _test_player_boundary_anti_lockup(runner: Node) -> void:
 	_assert_true(dist <= PlayerController.PLAY_RADIUS + 0.001, "Player boundary clamp keeps XZ inside playable radius")
 	_assert_true(pc.velocity_xz.x <= 0.05 and pc.velocity_xz.y > 1.0,
 		"Boundary zeroes outward radial velocity while preserving tangential slide (anti-lockup)")
+	pc.queue_free()
+
+
+func _test_rolled_screen_steering_and_no_mouse_drift(runner: Node) -> void:
+	var pc := PlayerController.new()
+	runner.add_child(pc)
+	pc.reset_at(10.0, Vector2.ZERO)
+
+	# Rotate camera by +90 deg around view axis and verify screen right maps along camera X axis (-Z world)
+	pc.current_roll = PI * 0.5
+	pc._sync_camera_transform()
+	var axes := pc.get_screen_axes_xz()
+	var right_xz := axes["right"] as Vector2
+	var expected_right := Vector2(0.0, -1.0)
+	_assert_true(right_xz.distance_to(expected_right) < 0.02,
+		"Rolled camera (+90 deg) remaps screen-right steering onto camera right XZ axis (%s)" % [str(right_xz)])
+
+	# Verify mouse motion applies crisp displacement without leaking into persistent velocity_xz drift
+	var prev_sens := SettingsManager.mouse_sensitivity
+	SettingsManager.set_mouse_sensitivity(1.0)
+	pc.current_roll = 0.0
+	pc._sync_camera_transform()
+	var mm := InputEventMouseMotion.new()
+	mm.relative = Vector2(200.0, 0.0)
+	pc._unhandled_input(mm)
+	var s1 := pc.apply_input_and_step(0.016, 40.0, false)
+	var after_mouse_x := (s1["curr_pos"] as Vector3).x
+	var vel_after_mouse := pc.velocity_xz.length()
+	var s2 := pc.apply_input_and_step(0.016, 40.0, false)
+	var zero_input_drift_x := absf((s2["curr_pos"] as Vector3).x - after_mouse_x)
+	SettingsManager.set_mouse_sensitivity(prev_sens)
+	_assert_true(after_mouse_x > 1.0 and vel_after_mouse < 0.001 and zero_input_drift_x < 0.001,
+		"Mouse steering displaces directly with zero double-integration velocity drift (x=%.2f, drift=%.4f)" % [after_mouse_x, zero_input_drift_x])
 	pc.queue_free()
 
 

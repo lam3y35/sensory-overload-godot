@@ -46,6 +46,8 @@ var reached_flow_lock: bool = false
 var near_misses: int = 0
 var daredevils: int = 0
 var death_wishes: int = 0
+var rings_collected: int = 0
+var boost_time: float = 0.0
 var deaths_in_run: int = 0
 var grazed_obstacles: Dictionary = {} # obs_id -> highest tier awarded
 var _stage_obstacle_count: int = 0
@@ -68,6 +70,8 @@ func begin_run(run_mode: String, stage: StageData, keep_checkpoint: bool = false
 	near_misses = 0
 	daredevils = 0
 	death_wishes = 0
+	rings_collected = 0
+	boost_time = 0.0
 	grazed_obstacles.clear()
 	_stage_obstacle_count = stage.obstacles.size() if stage != null else 0
 	if not keep_checkpoint:
@@ -143,6 +147,30 @@ func register_graze(obs_id: String, tier: int, is_autopilot: bool = false) -> in
 	return awarded_pts
 
 
+func register_ring(_ring_id: String, is_autopilot: bool = false) -> int:
+	if mode == MODE_WATCH or is_autopilot:
+		return 0
+	rings_collected += 1
+	if mode == MODE_ZEN:
+		flow_meter = minf(1.0, flow_meter + 0.12)
+		_update_flow_lock()
+		GameEvents.flow_changed.emit(flow_meter, color_locked)
+		return 0
+
+	streak += 1
+	chain_multiplier = minf(MAX_CHAIN_MULT, 1.0 + floorf(float(streak) / 3.0) * 0.5)
+	max_chain = maxf(max_chain, chain_multiplier)
+	chain_timer = CHAIN_DECAY_SECONDS
+	var awarded := int(round(300.0 * chain_multiplier))
+	score += awarded
+	flow_meter = minf(1.0, flow_meter + 0.12)
+	_update_flow_lock()
+	GameEvents.ring_collected.emit(awarded, streak, chain_multiplier)
+	GameEvents.chain_changed.emit(streak, chain_multiplier, 1.0)
+	GameEvents.flow_changed.emit(flow_meter, color_locked)
+	return awarded
+
+
 func step(delta: float, is_frozen: bool, in_transition: bool) -> void:
 	if is_frozen:
 		return
@@ -164,10 +192,11 @@ func step(delta: float, is_frozen: bool, in_transition: bool) -> void:
 			GameEvents.chain_changed.emit(streak, chain_multiplier, chain_timer / CHAIN_DECAY_SECONDS)
 
 
-func add_descent_distance_score(delta_depth: float) -> void:
+func add_descent_distance_score(delta_depth: float, is_boosting: bool = false) -> void:
 	if mode == MODE_ZEN or mode == MODE_WATCH:
 		return
-	score += maxi(0, int(floor(delta_depth * 2.0 * chain_multiplier)))
+	var mult := 2.0 if is_boosting else 1.0
+	score += maxi(0, int(floor(delta_depth * 2.0 * mult * chain_multiplier)))
 
 
 func _update_flow_lock() -> void:
@@ -176,12 +205,15 @@ func _update_flow_lock() -> void:
 		reached_flow_lock = true
 
 
-func compute_active_speed(stage: StageData, depth_m: float, ranked_lap: int) -> float:
+func compute_active_speed(stage: StageData, depth_m: float, ranked_lap: int, is_boosting: bool = false) -> float:
 	if stage == null:
-		return 40.0
+		return 60.0 if is_boosting else 40.0
 	var ramp_bonus := (depth_m / 100.0) * stage.speed_ramp * 3.5
 	var lap_bonus := float(ranked_lap) * 8.5 if mode == MODE_RANKED else 0.0
-	return clampf(stage.base_speed + ramp_bonus + lap_bonus, 18.0, 118.0)
+	var base := clampf(stage.base_speed + ramp_bonus + lap_bonus, 18.0, 118.0)
+	if is_boosting:
+		return clampf(base * 1.48, 26.0, 155.0)
+	return base
 
 
 func compute_effective_mask(stage: StageData, depth_m: float, ranked_lap: int) -> int:
@@ -199,6 +231,19 @@ func is_indestructible() -> bool:
 	return mode == MODE_ZEN or mode == MODE_WATCH
 
 
+func compute_rank_grade() -> String:
+	var final_score := score
+	if final_score >= 45000 and max_chain >= 5.0:
+		return "S+"
+	if final_score >= 22000 or max_chain >= 4.0:
+		return "S"
+	if final_score >= 10000 or max_chain >= 2.5 or rings_collected >= 5:
+		return "A"
+	if final_score >= 3500:
+		return "B"
+	return "C"
+
+
 func build_summary(depth_m: float, elapsed_sec: float, cleared: bool) -> Dictionary:
 	var grazed_all := cleared and _stage_obstacle_count > 0 and grazed_obstacles.size() >= _stage_obstacle_count
 	var final_score := score + (25000 if grazed_all else 0)
@@ -209,6 +254,9 @@ func build_summary(depth_m: float, elapsed_sec: float, cleared: bool) -> Diction
 		"daredevils": daredevils,
 		"death_wishes": death_wishes,
 		"total_grazes": near_misses + daredevils + death_wishes,
+		"rings_collected": rings_collected,
+		"boost_time": boost_time,
+		"rank_grade": compute_rank_grade(),
 		"deaths": deaths_in_run,
 		"depth": depth_m,
 		"duration_sec": elapsed_sec,

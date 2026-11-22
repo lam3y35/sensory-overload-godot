@@ -34,7 +34,10 @@ func apply_effects(
 	speed: float,
 	beat_phase: float,
 	bass_energy: float,
-	flow: float
+	flow: float,
+	boost_level: float = 0.0,
+	flash_strength: float = 0.0,
+	flash_color: Color = Color("14f1d9")
 ) -> void:
 	_ensure_postprocess_quad()
 	last_safe_mode = SettingsManager.safe_photosensitivity_mode
@@ -42,12 +45,16 @@ func apply_effects(
 	last_applied_mask = eff_mask
 
 	var speed_lines_on := EffectCatalog.has_effect(eff_mask, 11) and SettingsManager.speed_lines_enabled
+	var effective_boost := clampf(boost_level, 0.0, 1.0) if SettingsManager.speed_lines_enabled else clampf(boost_level * 0.25, 0.0, 0.25)
 	_mat.set_shader_parameter("u_time", elapsed_time)
 	_mat.set_shader_parameter("u_speed", speed)
 	_mat.set_shader_parameter("u_beat_phase", beat_phase)
 	_mat.set_shader_parameter("u_bass_energy", bass_energy)
 	_mat.set_shader_parameter("u_flow", flow)
 	_mat.set_shader_parameter("u_safe_mode", 1.0 if last_safe_mode else 0.0)
+	_mat.set_shader_parameter("u_boost", effective_boost)
+	_mat.set_shader_parameter("u_flash_strength", clampf(flash_strength, 0.0, 1.0))
+	_mat.set_shader_parameter("u_flash_color", flash_color)
 
 	_mat.set_shader_parameter("u_bit_speed_lines", 1.0 if speed_lines_on else 0.0)
 	_mat.set_shader_parameter("u_bit_chromatic", 1.0 if EffectCatalog.has_effect(eff_mask, 12) else 0.0)

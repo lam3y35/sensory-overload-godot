@@ -84,3 +84,20 @@ Playing and visually inspecting every screen, menu, mode, obstacle archetype, sh
 | Core Gameplay QA Checks (`qa_metrics.json`) | `8/9` (`pendulum` broken) | `9/9` `true` (`graze_score: 9962`, `flow_locked`, `freeze`, `dead`, `checkpoint`, `watch`, `editor`) | **PASS** |
 | Dual Renderer Parity (Vulkan Forward+ & OpenGL 3.3 Compat) | Verified (`1.2s` compat obstructed by slab) | Clean unobstructed frame (`46m / 720m`), zero shader errors | **PASS** |
 | Standalone Export Smoke Test (`SensoryOverload.exe --quit-after 180`) | Not yet exported | `vulkan=0`, `opengl3=0` (`104.43 MB` Windows `.exe`, `70.47 MB` Linux `.x86_64`) | **PASS** |
+
+---
+
+## 4. `v2.0.0` Playability, Glitch & Visual-Identity Overhaul
+
+Following user playtest feedback (*"boring, glitchy, not enjoyable, not attention hooked"*), a complete `v2.0.0` pass eliminated every shader/control glitch and upgraded game feel, audio, progression, and visual contrast (verified via [`qa_screenshots/v2/`](../qa_screenshots/v2/qa_metrics.json) and `103/103` headless assertions across `6` suites):
+
+- **Glitch Eliminations:**
+  - **Shader Readability & Zero Flicker (`voxel_tunnel.gdshader`):** Replaced high-frequency checkerboard flicker and olive-green `hue_rotate` shifts with dark obsidian/indigo architectural panels, glowing neon seams, BPM-synced traveling energy waves, and electric cyan/gold/magenta Overdrive accents.
+  - **Depth Cueing & Zero Z-Fighting (`obstacle_painted.gdshader`, `obstacle_manager.gd`):** Added smooth far spawn fade-in (`168 m -> 128 m`), distance depth fog, near-hazard danger glow (`58 m -> 14 m`), and non-coplanar Y extents on intersecting `waffle`, `cross_bars`, and `guillotine` parts.
+  - **Seamless Kaleidoscope & Event Flashes (`sensory_postprocess.gdshader`):** Replaced UV branch-cut tearing with polar color-space peripheral blending and added event vignette flashes for Grazes, Energy Rings, Overdrive Lock, Boost, and Impact.
+  - **Control Precision & Frame Pacing (`player_controller.gd`, `game_session.gd`):** Removed double-integration mouse velocity drift, remapped Mouse/Keyboard/Gamepad steering cleanly onto camera-rolled `right_xz` / `down_xz` axes, and switched `GameSession` to variable-rate `120 Hz` sub-stepping.
+- **Core Hook & Juice Additions:**
+  - **Hyper-Boost (`Hold Click / Shift / Space`):** `1.48x` speed boost, `2x` distance scoring, FOV surge (`+12 deg`), radial speed lines, and `MultiMeshInstance3D` 3D velocity needles ([`scripts/gameplay/speed_particles.gd`](../scripts/gameplay/speed_particles.gd)).
+  - **Collectible Energy Rings ([`scripts/gameplay/ring_manager.gd`](../scripts/gameplay/ring_manager.gd)):** Safe-corridor neon hoops awarding `+300 * Chain` pts, streak, Flow surge, burst sparks, FOV punch, and rising synth chimes.
+  - **Procedural Cyber-Synthwave Audio (`audio_sync_manager.gd`):** Upgraded loops to 8 beats with LP-filtered basslines, detuned chord pads, soft plucked arpeggios, snare/hat grooves, Main Menu ambient groove, and pitch-escalating `ring`, `whoosh`, `boost_on`, and `flow_lock` cues.
+  - **Zero-Friction HUD & Menu Flow:** Added `▶ PLAY NOW (QUICK DIVE)` on `MainMenu`, eye-centered reticle Flow/Boost/margin arcs (`CrosshairDrawer`), animated score popups (`GameHUD`), `S+`–`C` rank badges, `Next Stage (Enter)`, and `Space` instant retry on `DeathOverlay`.

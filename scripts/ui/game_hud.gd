@@ -1,6 +1,6 @@
 extends CanvasLayer
-## In-game HUD displaying score, graze tier popups, chain multiplier, Flow Color Lock,
-## depth progress, active 24-bit effects count, Practice checkpoints, and WATCH playback controls.
+## In-game HUD displaying eye-centered telemetry reticle, scale-punched graze & ring popups,
+## Chain multiplier, Flow Color Lock, Overdrive Boost status, Stage Intro banner, and WATCH controls.
 
 var _session: GameSession = null
 var _crosshair: CrosshairDrawer
@@ -13,24 +13,31 @@ var _chain_bar: ProgressBar
 var _flow_label: Label
 var _flow_bar: ProgressBar
 var _speed_label: Label
+var _rings_label: Label
+var _boost_label: Label
 var _depth_bar: ProgressBar
 var _depth_label: Label
 var _graze_popup: Label
+var _intro_banner: Label
 var _practice_label: Label
 var _watch_banner: Label
 var _autopilot_banner: Label
 var _ach_toast: Label
 
 var _popup_timer: float = 0.0
+var _intro_timer: float = 0.0
 var _toast_timer: float = 0.0
+var _chain_ratio: float = 0.0
 
 
 func _ready() -> void:
 	layer = 20
 	_build_ui()
 	GameEvents.graze_scored.connect(_on_graze_scored)
+	GameEvents.ring_collected.connect(_on_ring_collected)
 	GameEvents.chain_changed.connect(_on_chain_changed)
 	GameEvents.flow_changed.connect(_on_flow_changed)
+	GameEvents.boost_changed.connect(_on_boost_changed)
 	GameEvents.section_changed.connect(_on_section_changed)
 	GameEvents.checkpoint_updated.connect(_on_checkpoint_updated)
 	GameEvents.achievement_unlocked.connect(_on_achievement_unlocked)
@@ -48,6 +55,19 @@ func configure_session(session: GameSession) -> void:
 	_practice_label.visible = (_session.scoring.mode == ScoringManager.MODE_PRACTICE)
 	_watch_banner.visible = (_session.scoring.mode == ScoringManager.MODE_WATCH)
 	_crosshair.visible = (_session.scoring.mode != ScoringManager.MODE_WATCH)
+	_rings_label.text = "RINGS: 0"
+	_boost_label.visible = false
+	_chain_ratio = 0.0
+
+	if _session.scoring.mode == ScoringManager.MODE_WATCH:
+		_intro_banner.visible = false
+		_intro_timer = 0.0
+	else:
+		_intro_banner.text = "%s · %s  —  HOLD CLICK / SHIFT TO BOOST" % [st.stage_code, st.title.to_upper()]
+		_intro_banner.modulate.a = 1.0
+		_intro_banner.visible = true
+		_intro_timer = 2.4
+
 	_on_section_changed(0, st.effect_mask_at_depth(0.0))
 
 
@@ -59,6 +79,7 @@ func _process(delta: float) -> void:
 	var total_m: float = st.total_length()
 	_score_label.text = "%d" % _session.scoring.score
 	_speed_label.text = "%.0f m/s" % _session.current_speed
+	_rings_label.text = "RINGS: %d" % _session.scoring.rings_collected
 	_depth_bar.max_value = total_m
 	_depth_bar.value = clampf(depth_m, 0.0, total_m)
 	_depth_label.text = "SEC %d/%d  |  %.0fm / %.0fm" % [
@@ -73,13 +94,40 @@ func _process(delta: float) -> void:
 
 	var is_playing := (_session.state == GameSession.SessionState.PLAYING)
 	_crosshair.visible = is_playing and (_session.scoring.mode != ScoringManager.MODE_WATCH)
+	if _crosshair.visible:
+		var t_norm := Vector2(_session.player.position_3d.x, _session.player.position_3d.z) / PlayerController.PLAY_RADIUS
+		var beat_k := exp(-AudioSyncManager.beat_phase * 4.2)
+		_crosshair.update_telemetry(
+			_session.scoring.flow_meter,
+			_session.scoring.color_locked,
+			_chain_ratio,
+			_session.scoring.chain_multiplier,
+			_session.boost_level,
+			beat_k,
+			t_norm
+		)
+
 	if not is_playing:
 		_graze_popup.visible = false
-	elif _popup_timer > 0.0:
-		_popup_timer -= delta
-		_graze_popup.modulate.a = clampf(_popup_timer / 0.35, 0.0, 1.0)
+		_intro_banner.visible = false
 	else:
-		_graze_popup.visible = false
+		if _intro_timer > 0.0:
+			_intro_timer -= delta
+			_intro_banner.modulate.a = clampf(_intro_timer / 0.65, 0.0, 1.0)
+			if _intro_timer <= 0.0:
+				_intro_banner.visible = false
+
+		if _popup_timer > 0.0:
+			_popup_timer -= delta
+			var pop_t := clampf((_popup_timer - 0.55) / 0.30, 0.0, 1.0)
+			_graze_popup.pivot_offset = _graze_popup.size * 0.5
+			_graze_popup.scale = Vector2.ONE * lerpf(1.0, 1.38, pop_t)
+			var drift_up := (0.85 - _popup_timer) * 26.0
+			_graze_popup.offset_top = -102.0 - drift_up
+			_graze_popup.offset_bottom = -52.0 - drift_up
+			_graze_popup.modulate.a = clampf(_popup_timer / 0.35, 0.0, 1.0)
+		else:
+			_graze_popup.visible = false
 
 	if _toast_timer > 0.0:
 		_toast_timer -= delta
@@ -109,19 +157,35 @@ func _on_graze_scored(tier: int, points: int, _streak: int, _multiplier: float) 
 			_graze_popup.modulate = Color("facc15")
 		_:
 			_graze_popup.modulate = Color("14f1d9")
+	_graze_popup.scale = Vector2.ONE * 1.38
+	_graze_popup.visible = true
+	_popup_timer = 0.85
+
+
+func _on_ring_collected(points: int, _streak: int, _multiplier: float) -> void:
+	_graze_popup.text = "ENERGY RING  +%d" % points
+	_graze_popup.modulate = Color("facc15")
+	_graze_popup.scale = Vector2.ONE * 1.42
 	_graze_popup.visible = true
 	_popup_timer = 0.85
 
 
 func _on_chain_changed(streak: int, multiplier: float, timer_ratio: float) -> void:
+	_chain_ratio = clampf(timer_ratio, 0.0, 1.0)
 	_chain_label.text = "CHAIN %.1fx (%d)" % [multiplier, streak]
 	_chain_bar.value = timer_ratio * 100.0
 
 
 func _on_flow_changed(flow: float, color_locked: bool) -> void:
 	_flow_bar.value = flow * 100.0
-	_flow_label.text = "FLOW: COLOR LOCKED!" if color_locked else "FLOW: %.0f%%" % (flow * 100.0)
-	_flow_label.modulate = Color("14f1d9") if color_locked else Color.WHITE
+	_flow_label.text = "FLOW: OVERDRIVE LOCK!" if color_locked else "FLOW: %.0f%%" % (flow * 100.0)
+	_flow_label.modulate = Color("facc15") if color_locked else Color.WHITE
+
+
+func _on_boost_changed(active: bool, boost_ratio: float) -> void:
+	_boost_label.visible = active or boost_ratio > 0.12
+	if _boost_label.visible:
+		_boost_label.modulate = Color("facc15") if active else Color("38bdf8")
 
 
 func _on_section_changed(_idx: int, effect_mask: int) -> void:
@@ -177,13 +241,13 @@ func _build_ui() -> void:
 	UITheme.apply_hud_text_outline(_fx_label, 3)
 	tl.add_child(_stage_label); tl.add_child(_mode_label); tl.add_child(_fx_label)
 
-	# Top-right score / chain / flow pill
+	# Top-right score / chain / flow / boost pill
 	var tr_pill := UITheme.make_hud_pill(Color("ff2e93"))
 	tr_pill.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	tr_pill.offset_left = -350
+	tr_pill.offset_left = -355
 	tr_pill.offset_top = 18
 	tr_pill.offset_right = -24
-	tr_pill.offset_bottom = 165
+	tr_pill.offset_bottom = 205
 	root.add_child(tr_pill)
 
 	var tr := VBoxContainer.new()
@@ -219,22 +283,52 @@ func _build_ui() -> void:
 	_flow_bar.custom_minimum_size = Vector2(0, 8)
 	tr.add_child(_flow_bar)
 
+	var stat_row := HBoxContainer.new()
+	stat_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tr.add_child(stat_row)
+
+	_rings_label = Label.new()
+	_rings_label.text = "RINGS: 0"
+	_rings_label.modulate = Color("facc15")
+	_rings_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	UITheme.apply_hud_text_outline(_rings_label, 3)
+	stat_row.add_child(_rings_label)
+
 	_speed_label = Label.new()
-	_speed_label.text = "40 m/s"
+	_speed_label.text = "48 m/s"
 	_speed_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	UITheme.apply_hud_text_outline(_speed_label, 3)
-	tr.add_child(_speed_label)
+	stat_row.add_child(_speed_label)
+
+	_boost_label = Label.new()
+	_boost_label.text = "⚡ OVERDRIVE BOOST (2x DIST)"
+	_boost_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_boost_label.modulate = Color("facc15")
+	UITheme.apply_hud_text_outline(_boost_label, 3)
+	_boost_label.visible = false
+	tr.add_child(_boost_label)
 
 	# Center banners & popup
 	_graze_popup = Label.new()
 	_graze_popup.set_anchors_preset(Control.PRESET_CENTER)
-	_graze_popup.offset_left = -190; _graze_popup.offset_right = 190
-	_graze_popup.offset_top = -95; _graze_popup.offset_bottom = -45
+	_graze_popup.offset_left = -210; _graze_popup.offset_right = 210
+	_graze_popup.offset_top = -102; _graze_popup.offset_bottom = -52
 	_graze_popup.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_graze_popup.add_theme_font_size_override("font_size", 28)
 	UITheme.apply_hud_text_outline(_graze_popup, 5)
 	_graze_popup.visible = false
 	root.add_child(_graze_popup)
+
+	_intro_banner = Label.new()
+	_intro_banner.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_intro_banner.offset_left = -390; _intro_banner.offset_right = 390
+	_intro_banner.offset_top = 128
+	_intro_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_intro_banner.add_theme_font_size_override("font_size", 20)
+	_intro_banner.modulate = Color("facc15")
+	UITheme.apply_hud_text_outline(_intro_banner, 4)
+	_intro_banner.visible = false
+	root.add_child(_intro_banner)
 
 	_watch_banner = Label.new()
 	_watch_banner.set_anchors_preset(Control.PRESET_CENTER_TOP)

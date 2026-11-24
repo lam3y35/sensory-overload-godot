@@ -42,11 +42,11 @@ func _populate_summary(summary: Dictionary, cleared: bool) -> void:
 	_rank_lbl.text = "RANK: %s" % grade
 	match grade:
 		"S+", "S":
-			_rank_lbl.modulate = Color("facc15")
+			_rank_lbl.modulate = Color("ff9f1c")
 		"A":
-			_rank_lbl.modulate = Color("14f1d9")
-		"B":
 			_rank_lbl.modulate = Color("38bdf8")
+		"B":
+			_rank_lbl.modulate = Color("22c55e")
 		_:
 			_rank_lbl.modulate = Color("cbd5e1")
 
@@ -88,7 +88,7 @@ func _build_ui() -> void:
 	add_child(_modal_root)
 
 	var scrim := ColorRect.new()
-	scrim.color = Color(0.02, 0.01, 0.05, 0.65)
+	scrim.color = Color(0.02, 0.022, 0.035, 0.72)
 	scrim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_modal_root.add_child(scrim)
 
@@ -113,14 +113,12 @@ func _build_ui() -> void:
 
 	_title_lbl = Label.new()
 	_title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_title_lbl.add_theme_font_size_override("font_size", 30)
-	UITheme.apply_hud_text_outline(_title_lbl, 4)
+	UITheme.style_display_label(_title_lbl, 30, true)
 	vbox.add_child(_title_lbl)
 
 	_rank_lbl = Label.new()
 	_rank_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_rank_lbl.add_theme_font_size_override("font_size", 26)
-	UITheme.apply_hud_text_outline(_rank_lbl, 4)
+	UITheme.style_display_label(_rank_lbl, 26, true)
 	vbox.add_child(_rank_lbl)
 
 	_stats_lbl = Label.new()

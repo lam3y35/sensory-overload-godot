@@ -97,20 +97,22 @@ void fragment() {
 		col = clamp((col - 0.5) * c_amt + 0.5, vec3(0.0), vec3(1.0));
 	}
 
-	// 6) Scanlines & Dynamic Radial Speed Streaks
+	// 6) Crisp radial anime/arcade speed streaks around outer viewport + subtle scanlines
 	if (u_bit_scanlines > 0.5) {
-		float scan = 0.92 + 0.08 * sin(uv.y * 540.0 + u_time * 16.0);
+		float scan = 0.93 + 0.07 * sin(uv.y * 540.0 + u_time * 16.0);
 		col *= scan;
 	}
-	float streak_driver = max(u_bit_speed_lines * 0.65, boost_clamp);
+	float spd_factor = clamp((u_speed - 44.0) / 52.0, 0.30, 1.0);
+	float streak_driver = max(u_bit_speed_lines * spd_factor, boost_clamp);
 	if (streak_driver > 0.05) {
-		float radial_mask = smoothstep(0.26, 0.58, r);
-		float ang_id = floor((ang + 3.14159265) * 14.0);
-		float h = fract(sin(ang_id * 127.1) * 43758.5453);
-		float spoke = pow(max(0.0, sin((ang + h * 6.2831853) * 28.0)), 14.0);
-		float streak_anim = smoothstep(0.42, 0.96, fract(r * 2.3 - u_time * (2.8 + 2.4 * streak_driver + h * 1.6) + h));
-		vec3 streak_col = mix(vec3(0.45, 0.95, 1.0), vec3(1.0, 0.88, 0.35), boost_clamp * 0.6);
-		col += streak_col * radial_mask * spoke * streak_anim * 0.45 * streak_driver;
+		float radial_mask = smoothstep(0.24, 0.62, r);
+		float s_ray1 = pow(max(0.0, sin(ang * 32.0 + sin(ang * 7.0) * 1.4)), 10.0);
+		float s_ray2 = pow(max(0.0, sin(ang * 54.0 + cos(ang * 11.0) * 1.1 + 1.5)), 14.0);
+		float streak_flow1 = smoothstep(0.28, 0.96, fract(r * 1.45 - u_time * (2.6 + 2.2 * streak_driver) + sin(ang * 5.0) * 0.35));
+		float streak_flow2 = smoothstep(0.35, 0.98, fract(r * 2.15 - u_time * (3.4 + 2.8 * streak_driver) + cos(ang * 9.0) * 0.45));
+		float streak_int = (s_ray1 * streak_flow1 * 0.55 + s_ray2 * streak_flow2 * 0.45) * radial_mask * streak_driver;
+		vec3 streak_col = mix(vec3(0.95, 0.97, 1.0), vec3(1.0, 0.85, 0.45), boost_clamp * 0.55);
+		col += streak_col * streak_int * 0.42;
 	}
 
 	// 7) Vignette Throb + Event Edge Flash Juice (Grazes, Rings, Boost, Impact)

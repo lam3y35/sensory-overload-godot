@@ -50,7 +50,7 @@ func refresh() -> void:
 
 func _build_ui() -> void:
 	var dim := ColorRect.new()
-	dim.color = Color(0.03, 0.015, 0.08, 0.94)
+	dim.color = Color(0.025, 0.028, 0.042, 0.95)
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(dim)
 
@@ -76,12 +76,12 @@ func _build_ui() -> void:
 	var hdr := Label.new()
 	hdr.text = "ACHIEVEMENTS & LIFETIME TELEMETRY"
 	hdr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hdr.add_theme_font_size_override("font_size", 26)
+	UITheme.style_display_label(hdr, 26, true)
 	vbox.add_child(hdr)
 
 	_summary_lbl = Label.new()
 	_summary_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_summary_lbl.modulate = Color("14f1d9")
+	_summary_lbl.modulate = Color("ff9f1c")
 	vbox.add_child(_summary_lbl)
 
 	var scroll := ScrollContainer.new()

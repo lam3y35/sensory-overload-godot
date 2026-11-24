@@ -26,7 +26,7 @@ func _ready() -> void:
 
 func _build_ui() -> void:
 	var dim := ColorRect.new()
-	dim.color = Color(0.02, 0.01, 0.05, 0.92)
+	dim.color = Color(0.025, 0.028, 0.042, 0.94)
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(dim)
 
@@ -52,7 +52,7 @@ func _build_ui() -> void:
 	var hdr := Label.new()
 	hdr.text = "SETTINGS & ACCESSIBILITY"
 	hdr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hdr.add_theme_font_size_override("font_size", 26)
+	UITheme.style_display_label(hdr, 26, true)
 	vbox.add_child(hdr)
 
 	_tabs = TabContainer.new()

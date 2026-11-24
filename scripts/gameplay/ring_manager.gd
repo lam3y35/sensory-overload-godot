@@ -7,8 +7,9 @@ extends Node3D
 const ACTIVE_AHEAD_M := 160.0
 const ACTIVE_BEHIND_M := 12.0
 const RING_RADIUS := 2.65
+const VISUAL_DIAMOND_R := 1.68
 const MAX_VISIBLE_RINGS := 16
-const SEGMENT_COUNT := 12
+const SEGMENT_COUNT := 4
 
 var _rings: Array[Dictionary] = []
 var _mm_inst: MultiMeshInstance3D
@@ -126,10 +127,10 @@ func step_and_sync(player_y: float, delta: float, beat_phase: float) -> void:
 
 	var mm := _mm_inst.multimesh
 	var ring_slot := 0
-	var rad := RING_RADIUS * (0.94 + 0.08 * beat_kick)
-	var chord_len := 2.0 * rad * sin(PI / float(SEGMENT_COUNT)) * 0.94
-	var c_gold := Color("facc15")
-	var c_cyan := Color("14f1d9")
+	var rad := VISUAL_DIAMOND_R * (0.94 + 0.08 * beat_kick)
+	var chord_len := rad * 1.44
+	var c_white := Color(1.0, 0.98, 0.94, 0.85)
+	var c_amber := Color(1.0, 0.72, 0.18, 0.85)
 
 	for ring in _rings:
 		if ring_slot >= MAX_VISIBLE_RINGS:
@@ -142,17 +143,17 @@ func step_and_sync(player_y: float, delta: float, beat_phase: float) -> void:
 
 		var rxz := ring["xz"] as Vector2
 		var center := Vector3(rxz.x, -d, rxz.y)
-		var spin := _local_time * 2.1 + center.y * 0.08
+		var spin := _local_time * 1.85 + center.y * 0.06
 		var dist_rel := maxf(0.0, player_y - center.y)
-		var alpha := smoothstep_val(162.0, 122.0, dist_rel) * 0.96
+		var alpha := smoothstep_val(148.0, 108.0, dist_rel) * 0.80
 
 		for seg in range(SEGMENT_COUNT):
 			var inst_idx := ring_slot * SEGMENT_COUNT + seg
 			var ang := (float(seg) / float(SEGMENT_COUNT)) * TAU + spin
-			var seg_pos := center + Vector3(cos(ang) * rad, 0.0, sin(ang) * rad)
-			var b := Basis(Vector3.UP, -ang + PI * 0.5).scaled_local(Vector3(chord_len, 0.24, 0.24))
+			var seg_pos := center + Vector3(cos(ang) * rad * 0.707, 0.0, sin(ang) * rad * 0.707)
+			var b := Basis(Vector3.UP, -ang + PI * 0.5).scaled_local(Vector3(chord_len, 0.14, 0.14))
 			mm.set_instance_transform(inst_idx, Transform3D(b, seg_pos))
-			var col := c_gold if (seg % 2 == 0) else c_cyan
+			var col := c_white if (seg % 2 == 0) else c_amber
 			col.a = alpha
 			mm.set_instance_color(inst_idx, col)
 		ring_slot += 1

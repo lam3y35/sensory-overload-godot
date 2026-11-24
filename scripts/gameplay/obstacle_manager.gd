@@ -198,6 +198,7 @@ func _sync_visual_entry(
 		mat.set_shader_parameter("u_outline_thickness", SettingsManager.outline_thickness)
 		mat.set_shader_parameter("u_hit_highlight", 1.0 if is_hit else 0.0)
 		mat.set_shader_parameter("u_flow_locked", 1.0 if flow_locked else 0.0)
+		mat.set_shader_parameter("u_half_extents", half_ext)
 		mat.set_shader_parameter("u_color_primary", prim)
 		mat.set_shader_parameter("u_color_accent", acc)
 		mat.set_shader_parameter("u_color_bg", bg_col)
@@ -221,111 +222,121 @@ static func compute_parts(
 	var amp := obs.amplitude
 	var ph := obs.phase
 	var parts: Array[Dictionary] = []
-	var span := tunnel_radius * 0.92
+	var span := tunnel_radius * 0.94
 
 	match obs.type:
 		"waffle":
-			# Signature multi-cell voxel waffle grid with deterministic open passage cell(s)
+			# Clean non-overlapping 3x3 hollow voxel grid matching Steam ss_00 & trailer frames
 			var spin := Basis(Vector3.UP, t_sec * sp * 0.35 + ph)
 			var rot_full := (base_rot * spin).orthonormalized()
 			var open_col := posmod(obs.seed_int, 3)
 			var open_row := posmod(obs.seed_int / 3, 3)
 			var cell := 4.4
-			# Horizontal and vertical dividers + selective cell blockers leaving clear navigable gaps (non-coplanar Y extents avoid Z-fighting)
+			var rail_h := 0.42
+			var bridge_hz := (cell * 0.5) - rail_h - 0.01
 			for r in range(4):
 				var z_off := (-1.5 + float(r)) * cell
-				parts.append(_make_part(base_pos, rot_full, Vector3(0.0, 0.0, z_off), Basis.IDENTITY, Vector3(span, 0.45, 0.48), sc, 1.0, (r % 2) == 1))
-			for c in range(4):
-				var x_off := (-1.5 + float(c)) * cell
-				parts.append(_make_part(base_pos, rot_full, Vector3(x_off, 0.0, 0.0), Basis.IDENTITY, Vector3(0.48, 0.49, span), sc, 1.0, (c % 2) == 0))
+				parts.append(_make_part(base_pos, rot_full, Vector3(0.0, 0.0, z_off), Basis.IDENTITY, Vector3(span, 0.45, rail_h), sc, 1.0, false))
+			for r_band in range(3):
+				var z_mid := (-1.0 + float(r_band)) * cell
+				for c in range(4):
+					var x_off := (-1.5 + float(c)) * cell
+					parts.append(_make_part(base_pos, rot_full, Vector3(x_off, 0.0, z_mid), Basis.IDENTITY, Vector3(rail_h, 0.45, bridge_hz), sc, 1.0, false))
+			var blockers := 0
 			for gx in range(3):
 				for gz in range(3):
 					if gx == open_col and gz == open_row:
 						continue
-					if ((gx + gz + obs.seed_int) % 4) == 0:
+					if ((gx + gz + obs.seed_int) % 4) != 1 or blockers >= 2:
 						continue
+					blockers += 1
 					var cx := (-1.0 + float(gx)) * cell
 					var cz := (-1.0 + float(gz)) * cell
-					parts.append(_make_part(base_pos, rot_full, Vector3(cx, 0.0, cz), Basis.IDENTITY, Vector3(1.55, 0.41, 1.55), sc, 0.96, ((gx + gz) % 2) == 1))
+					parts.append(_make_part(base_pos, rot_full, Vector3(cx, 0.0, cz), Basis.IDENTITY, Vector3(1.55, 0.45, 1.55), sc, 0.92, true))
 
 		"cross_bars":
+			# Non-overlapping monumental X-cross blades covering center cleanly
 			var spin := Basis(Vector3.UP, t_sec * sp * 1.45 + ph)
 			var rot_full := (base_rot * spin).orthonormalized()
-			parts.append(_make_part(base_pos, rot_full, Vector3.ZERO, Basis.IDENTITY, Vector3(span, 0.55, 0.95), sc, 1.0, false))
-			parts.append(_make_part(base_pos, rot_full, Vector3.ZERO, Basis.IDENTITY, Vector3(0.95, 0.59, span), sc, 1.0, true))
+			var arm_w := 1.02
+			var z_arm_len := (span - arm_w) * 0.5
+			var z_arm_off := arm_w + z_arm_len + 0.01
+			parts.append(_make_part(base_pos, rot_full, Vector3.ZERO, Basis.IDENTITY, Vector3(span, 0.52, arm_w), sc, 1.0, false))
+			parts.append(_make_part(base_pos, rot_full, Vector3(0.0, 0.0, z_arm_off), Basis.IDENTITY, Vector3(arm_w, 0.52, z_arm_len), sc, 1.0, false))
+			parts.append(_make_part(base_pos, rot_full, Vector3(0.0, 0.0, -z_arm_off), Basis.IDENTITY, Vector3(arm_w, 0.52, z_arm_len), sc, 1.0, false))
 
 		"iris_ring":
-			var pulse := 1.0 + 0.34 * amp * sin(t_sec * sp * 2.4 + beat_phase * TAU * 0.5 + ph)
-			var ring_r := clampf(4.6 * pulse, 2.3, span * 0.85)
-			var seg_count := 8
+			var pulse := 1.0 + 0.32 * amp * sin(t_sec * sp * 2.4 + beat_phase * TAU * 0.5 + ph)
+			var ring_r := clampf(4.8 * pulse, 2.4, span * 0.86)
+			var seg_count := 12
 			for s in range(seg_count):
 				var ang := (float(s) / float(seg_count)) * TAU + t_sec * sp * 0.5 + ph
 				var lp := Vector3(cos(ang) * ring_r, 0.0, sin(ang) * ring_r)
 				var lr := Basis(Vector3.UP, -ang)
-				parts.append(_make_part(base_pos, base_rot, lp, lr, Vector3(0.85, 0.60, 1.95), sc, 1.0, (s % 2) == 1))
+				parts.append(_make_part(base_pos, base_rot, lp, lr, Vector3(0.88, 0.56, 1.42), sc, 1.0, (s % 2) == 1))
 
 		"sliding_blades":
 			for b in range(3):
 				var dir_sign := 1.0 if (b % 2) == 0 else -1.0
-				var slide_x := dir_sign * 4.5 * amp * sin(t_sec * sp * 2.1 + ph + float(b) * 1.4)
-				var lp := Vector3(slide_x, -float(b) * 2.2, (-1.0 + float(b)) * 2.4)
-				parts.append(_make_part(base_pos, base_rot, lp, Basis.IDENTITY, Vector3(4.8, 0.36, 1.45), sc, 1.0, (b % 2) == 1))
+				var slide_x := dir_sign * 4.6 * amp * sin(t_sec * sp * 2.1 + ph + float(b) * 1.4)
+				var lp := Vector3(slide_x, -float(b) * 2.4, (-1.0 + float(b)) * 2.5)
+				parts.append(_make_part(base_pos, base_rot, lp, Basis.IDENTITY, Vector3(5.2, 0.42, 1.85), sc, 1.0, (b % 2) == 1))
 
 		"pendulum":
 			var swing := 0.95 * clampf(amp, 0.3, 1.4) * sin(t_sec * sp * 2.2 + ph)
 			var pivot := Vector3(0.0, 0.0, -span * 0.72)
 			var swing_rot := Basis(Vector3.UP, swing)
 			var arm_len := span * 0.88
-			var arm_lp := pivot + swing_rot * Vector3(0.0, 0.0, arm_len * 0.5)
+			var bob_half := Vector3(2.2, 0.85, 2.2)
+			var arm_half_len := maxf(0.5, (arm_len - bob_half.z) * 0.5)
+			var arm_lp := pivot + swing_rot * Vector3(0.0, 0.0, arm_half_len)
 			var bob_lp := pivot + swing_rot * Vector3(0.0, 0.0, arm_len)
-			parts.append(_make_part(base_pos, base_rot, arm_lp, swing_rot, Vector3(0.42, 0.42, arm_len * 0.5), sc, 1.0, true))
-			parts.append(_make_part(base_pos, base_rot, bob_lp, swing_rot, Vector3(2.2, 0.85, 2.2), sc, 1.0, false))
+			parts.append(_make_part(base_pos, base_rot, arm_lp, swing_rot, Vector3(0.42, 0.42, arm_half_len), sc, 1.0, true))
+			parts.append(_make_part(base_pos, base_rot, bob_lp, swing_rot, bob_half, sc, 1.0, false))
 
 		"tumbling_cube":
 			var euler_angles := Vector3(1.1, 1.55, 0.85) * (t_sec * sp + ph)
 			var tumble_rot := Basis.from_euler(euler_angles).orthonormalized()
 			var rot_full := (base_rot * tumble_rot).orthonormalized()
 			parts.append(_make_part(base_pos, rot_full, Vector3.ZERO, Basis.IDENTITY, Vector3(2.85, 2.85, 2.85), sc, 1.0, false))
-			# Layered painted outer ring for depth silhouette
-			parts.append(_make_part(base_pos, rot_full, Vector3.ZERO, Basis.IDENTITY, Vector3(3.35, 0.65, 3.35), sc, 0.85, true))
+			parts.append(_make_part(base_pos, rot_full, Vector3.ZERO, Basis.IDENTITY, Vector3(3.45, 0.58, 3.45), sc, 0.88, true))
 
 		"guillotine":
-			var wave := pow(0.5 + 0.5 * sin(t_sec * sp * 2.6 + ph), 3.0)
-			var blade_z := lerpf(-span * 0.68, span * 0.15, wave)
-			# Side guide rails
-			parts.append(_make_part(base_pos, base_rot, Vector3(-span * 0.72, 0.0, 0.0), Basis.IDENTITY, Vector3(0.65, 0.65, span), sc, 1.0, true))
-			parts.append(_make_part(base_pos, base_rot, Vector3(span * 0.72, 0.0, 0.0), Basis.IDENTITY, Vector3(0.65, 0.65, span), sc, 1.0, true))
-			# Slamming blade
-			parts.append(_make_part(base_pos, base_rot, Vector3(0.0, 0.0, blade_z), Basis.IDENTITY, Vector3(span * 0.70, 0.44, 1.95), sc, 1.0, false))
+			# Sculpted tunnel-spanning sliding half-wall barrier with flanking guide rails
+			var wave := pow(0.5 + 0.5 * sin(t_sec * sp * 2.6 + ph), 2.4)
+			var blade_z := lerpf(-span * 0.58, span * 0.16, wave)
+			parts.append(_make_part(base_pos, base_rot, Vector3(-span * 0.78, 0.0, 0.0), Basis.IDENTITY, Vector3(0.55, 0.55, span * 0.92), sc, 1.0, true))
+			parts.append(_make_part(base_pos, base_rot, Vector3(span * 0.78, 0.0, 0.0), Basis.IDENTITY, Vector3(0.55, 0.55, span * 0.92), sc, 1.0, true))
+			parts.append(_make_part(base_pos, base_rot, Vector3(0.0, 0.0, blade_z), Basis.IDENTITY, Vector3(span * 0.68, 0.46, 2.45), sc, 1.0, false))
 
 		"drifting_ghost":
 			var gx := 4.8 * amp * sin(t_sec * sp * 1.3 + ph)
 			var gz := 4.8 * amp * cos(t_sec * sp * 1.9 + ph * 0.7)
 			var drift_rot := Basis(Vector3.UP, t_sec * sp * 1.1)
 			var crown_rot := Basis(Vector3.UP, -t_sec * sp * 0.9 + 0.785)
-			parts.append(_make_part(base_pos, base_rot, Vector3(gx, 0.0, gz), drift_rot, Vector3(2.2, 1.45, 2.2), sc, 0.85, false))
-			parts.append(_make_part(base_pos, base_rot, Vector3(gx, -0.55, gz), crown_rot, Vector3(2.85, 0.60, 2.85), sc, 0.62, true))
-			parts.append(_make_part(base_pos, base_rot, Vector3(gx, -1.25, gz), drift_rot, Vector3(1.55, 0.95, 1.55), sc, 0.42, false))
+			parts.append(_make_part(base_pos, base_rot, Vector3(gx, 0.0, gz), drift_rot, Vector3(2.2, 1.25, 2.2), sc, 0.88, false))
+			parts.append(_make_part(base_pos, base_rot, Vector3(gx, -1.75, gz), crown_rot, Vector3(2.85, 0.52, 2.85), sc, 0.72, true))
+			parts.append(_make_part(base_pos, base_rot, Vector3(gx, -3.10, gz), drift_rot, Vector3(1.55, 0.85, 1.55), sc, 0.52, false))
 
 		"spiral_slats":
-			for s in range(5):
-				var ang := float(s) * 0.62 + t_sec * sp * 1.1 + ph
+			for s in range(6):
+				var ang := float(s) * 0.56 + t_sec * sp * 1.1 + ph
 				var lr := Basis(Vector3.UP, ang)
-				var lp := Vector3(cos(ang) * 2.6, -float(s) * 1.25, sin(ang) * 2.6)
-				parts.append(_make_part(base_pos, base_rot, lp, lr, Vector3(4.2, 0.35, 0.92), sc, 1.0, (s % 2) == 1))
+				var lp := Vector3(cos(ang) * 2.8, -float(s) * 1.25, sin(ang) * 2.8)
+				parts.append(_make_part(base_pos, base_rot, lp, lr, Vector3(4.3, 0.40, 1.02), sc, 1.0, (s % 2) == 1))
 
 		"pillar_grid":
 			var sway := 1.4 * amp * sin(t_sec * sp * 1.5 + ph)
 			var offsets: Array[Vector2] = [
-				Vector2(-4.4, -3.5),
-				Vector2(4.4, -3.5),
+				Vector2(-4.5, -3.6),
+				Vector2(4.5, -3.6),
 				Vector2(0.0 + sway, 0.0),
-				Vector2(-4.2, 3.8),
-				Vector2(4.2, 3.8),
+				Vector2(-4.3, 3.8),
+				Vector2(4.3, 3.8),
 			]
 			for idx in range(offsets.size()):
 				var p2 := offsets[idx]
-				parts.append(_make_part(base_pos, base_rot, Vector3(p2.x, -1.5, p2.y), Basis.IDENTITY, Vector3(1.15, 3.2, 1.15), sc, 1.0, (idx % 2) == 1))
+				parts.append(_make_part(base_pos, base_rot, Vector3(p2.x, -1.6, p2.y), Basis.IDENTITY, Vector3(1.18, 3.5, 1.18), sc, 1.0, (idx % 2) == 1))
 
 		_:
 			parts.append(_make_part(base_pos, base_rot, Vector3.ZERO, Basis.IDENTITY, Vector3(2.5, 0.5, 2.5), sc, 1.0, false))

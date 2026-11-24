@@ -68,7 +68,7 @@ func reset_particles(tunnel_radius: float = 10.0) -> void:
 	_stream_data.clear()
 	for i in range(STREAM_COUNT):
 		var ang := (float(i) / float(STREAM_COUNT)) * TAU + float(i % 7) * 0.37
-		var r_frac := 0.68 + 0.28 * fmod(float(i) * 0.6180339, 1.0)
+		var r_frac := 0.84 + 0.11 * fmod(float(i) * 0.6180339, 1.0)
 		var depth_off := 4.0 + 135.0 * (float(i) / float(STREAM_COUNT))
 		var spd := 0.85 + 0.55 * fmod(float(i) * 0.381966, 1.0)
 		_stream_data.append({
@@ -124,30 +124,29 @@ func update_particles(
 		reset_particles()
 
 	var smm := _stream_mm_inst.multimesh
-	var c_norm := palette[0] if palette.size() > 0 else Color("14f1d9")
-	var c_boost := Color("facc15") if boost_level > 0.25 else (Color("ff2e93") if flow_locked else c_norm)
-	var streak_len := clampf(2.4 + (speed * 0.075) * (1.0 + boost_level * 1.45), 2.2, 16.0)
-	var streak_thick := lerpf(0.055, 0.095, boost_level)
+	var c_norm := palette[0].lerp(Color.WHITE, 0.72) if not palette.is_empty() else Color(0.95, 0.97, 1.0)
+	var c_boost := Color("ff9f1c") if boost_level > 0.25 else (Color("ff3b5c") if flow_locked else c_norm)
+	var streak_len := clampf(2.2 + (speed * 0.065) * (1.0 + boost_level * 1.45), 2.0, 14.0)
+	var streak_thick := lerpf(0.022, 0.048, boost_level)
 
 	for i in range(STREAM_COUNT):
 		var d: Dictionary = _stream_data[i]
-		# Relative drift upward past camera accelerates perceived drop speed
-		d["y"] = float(d["y"]) + delta * speed * float(d["spd"]) * (0.45 + boost_level * 0.75)
+		d["y"] = float(d["y"]) + delta * speed * float(d["spd"]) * (0.48 + boost_level * 0.75)
 		if float(d["y"]) > player_y + 3.0:
 			d["y"] = player_y - (105.0 + 35.0 * fmod(float(i) * 0.47, 1.0))
 		elif float(d["y"]) < player_y - 145.0:
 			d["y"] = player_y - (4.0 + 130.0 * (float(i) / float(STREAM_COUNT)))
 
-		var rad := _radius * float(d["r_frac"])
+		var rad := maxf(8.4, _radius * float(d["r_frac"]))
 		var ang := float(d["ang"])
 		var pos := Vector3(cos(ang) * rad, float(d["y"]), sin(ang) * rad)
 		var xform := Transform3D(Basis.IDENTITY.scaled_local(Vector3(streak_thick, streak_len, streak_thick)), pos)
 		smm.set_instance_transform(i, xform)
 
 		var dist_rel := maxf(0.0, player_y - pos.y)
-		var alpha := smoothstep_val(140.0, 22.0, dist_rel) * (0.42 + 0.48 * boost_level)
-		var tint := c_norm.lerp(c_boost, clampf(boost_level + (0.35 if (i & 1) == 1 else 0.0), 0.0, 1.0))
-		tint.a = clampf(alpha, 0.05, 0.92)
+		var alpha := smoothstep_val(135.0, 20.0, dist_rel) * (0.14 + 0.24 * boost_level)
+		var tint := c_norm.lerp(c_boost, clampf(boost_level + (0.25 if (i & 1) == 1 else 0.0), 0.0, 1.0))
+		tint.a = clampf(alpha, 0.03, 0.38)
 		smm.set_instance_color(i, tint)
 
 	var bmm := _burst_mm_inst.multimesh

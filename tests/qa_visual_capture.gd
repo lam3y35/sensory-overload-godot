@@ -70,13 +70,31 @@ func _await_seconds(sec: float) -> void:
 		t += maxf(0.001, get_process_delta_time())
 
 
+func _measure_steady_fps(frames: int = 30) -> float:
+	var start_us := Time.get_ticks_usec()
+	for _i in range(frames):
+		await get_tree().process_frame
+	var sec := maxf(0.001, float(Time.get_ticks_usec() - start_us) / 1000000.0)
+	return snappedf(float(frames) / sec, 0.1)
+
+
 func _capture_compat_mode() -> void:
 	var gs_scene := load("res://scenes/game_session.tscn") as PackedScene
 	var gs := gs_scene.instantiate() as GameSession
 	add_child(gs)
 	gs.start_session({"stage_id": "06_a", "mode": ScoringManager.MODE_ZEN})
-	await _await_seconds(0.65)
-	_metrics["fps_samples"]["opengl3_compat"] = Engine.get_frames_per_second()
+	await _await_seconds(0.35)
+	var compat_fps := await _measure_steady_fps(30)
+	print("QA OpenGL3 Compat steady FPS: ", compat_fps)
+	var metrics_path := _out_dir.path_join("qa_metrics.json")
+	if FileAccess.file_exists(metrics_path):
+		var f_r := FileAccess.open(metrics_path, FileAccess.READ)
+		var parsed: Variant = JSON.parse_string(f_r.get_as_text()) if f_r != null else null
+		if typeof(parsed) == TYPE_DICTIONARY:
+			parsed["fps_samples"]["opengl3_compat"] = compat_fps
+			var f_w := FileAccess.open(metrics_path, FileAccess.WRITE)
+			if f_w != null:
+				f_w.store_string(JSON.stringify(parsed, "\t"))
 	await _snap("19_opengl3_compatibility.png")
 	gs.queue_free()
 	await get_tree().process_frame
@@ -137,8 +155,8 @@ func _capture_gameplay_and_modes() -> void:
 
 	# 05 - Normal Mode Gameplay (stage 01_a)
 	gs.start_session({"stage_id": "01_a", "mode": ScoringManager.MODE_NORMAL})
-	await _await_seconds(0.45)
-	_metrics["fps_samples"]["normal_01_a"] = Engine.get_frames_per_second()
+	await _await_seconds(0.35)
+	_metrics["fps_samples"]["normal_01_a"] = await _measure_steady_fps(30)
 	await _snap("05_normal_gameplay.png")
 
 	# 06 - Graze Popup, Flow Color Lock & Hyper-Boost streaks
@@ -185,14 +203,9 @@ func _capture_gameplay_and_modes() -> void:
 
 	# 10 - High Chaos Ranked Sensory Overload (06_c) in live moving flight + clean steady FPS benchmark
 	gs.start_session({"stage_id": "06_c", "mode": ScoringManager.MODE_RANKED})
+	gs.spawn_grace_timer = 3.0
 	await _await_seconds(0.35)
-	var bench_frames := 0
-	var bench_start_us := Time.get_ticks_usec()
-	while bench_frames < 30:
-		await get_tree().process_frame
-		bench_frames += 1
-	var bench_sec := maxf(0.001, float(Time.get_ticks_usec() - bench_start_us) / 1000000.0)
-	_metrics["fps_samples"]["ranked_06_c"] = snappedf(float(bench_frames) / bench_sec, 0.1)
+	_metrics["fps_samples"]["ranked_06_c"] = await _measure_steady_fps(30)
 	await _snap("10_sensory_overload_fx.png")
 
 	# 11 - Practice Mode Checkpoint & Zen Section Check
@@ -229,8 +242,8 @@ func _capture_gameplay_and_modes() -> void:
 
 	# 13 - All Hallows (07_c Maw of Midnight)
 	gs.start_session({"stage_id": "07_c", "mode": ScoringManager.MODE_ZEN})
-	await _await_seconds(0.75)
-	_metrics["fps_samples"]["all_hallows_07_c"] = Engine.get_frames_per_second()
+	await _await_seconds(0.35)
+	_metrics["fps_samples"]["all_hallows_07_c"] = await _measure_steady_fps(30)
 	await _snap("13_all_hallows.png")
 
 	gs.queue_free()
@@ -370,6 +383,7 @@ func _render_obstacle_grid(types: PackedStringArray, filename: String, eval_time
 			mi.mesh = unit_box
 			var sm := ShaderMaterial.new()
 			sm.shader = obs_shader
+			sm.set_shader_parameter("u_half_extents", he)
 			sm.set_shader_parameter("u_color_primary", obs.color_primary)
 			sm.set_shader_parameter("u_color_accent", obs.color_accent)
 			mi.material_override = sm
@@ -448,6 +462,7 @@ func _render_pendulum_motion_comparison(filename: String) -> void:
 			mi.mesh = unit_box
 			var sm := ShaderMaterial.new()
 			sm.shader = obs_shader
+			sm.set_shader_parameter("u_half_extents", he)
 			mi.material_override = sm
 			mi.transform = Transform3D(xf.basis.scaled_local(he * 2.0), xf.origin)
 			vp.add_child(mi)

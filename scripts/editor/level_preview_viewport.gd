@@ -30,10 +30,7 @@ func _ensure_world() -> void:
 
 	var we := WorldEnvironment.new()
 	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color("0d051a")
-	env.glow_enabled = true
-	env.glow_intensity = 0.55
+	TunnelRenderer.apply_cinema_environment(env, Color("070410"))
 	we.environment = env
 	sub_viewport.add_child(we)
 

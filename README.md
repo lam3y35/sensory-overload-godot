@@ -1,50 +1,48 @@
-# Sensory Overload — Godot 4 Clean-Room Reconstruction (`v3.0.0`)
+# Sensory Overload — Godot 4 Clean-Room Reconstruction (`v4.0.0`)
 
-[![Download Windows x64](https://img.shields.io/badge/⬇_ONE--CLICK_DOWNLOAD-Windows_x64_(ZIP)-14F1D9?style=for-the-badge&logo=windows&logoColor=0A0618&labelColor=0A0618)](https://github.com/lam3y35/sensory-overload-godot/releases/latest/download/SensoryOverload-Windows-x64.zip)
-[![Direct EXE](https://img.shields.io/badge/Direct_Standalone-.EXE_(Windows_x64)-FF2E93?style=for-the-badge)](https://github.com/lam3y35/sensory-overload-godot/releases/latest/download/SensoryOverload-Windows-x64.exe)
-[![Download Linux x64](https://img.shields.io/badge/Download-Linux_x64_(tar.gz)-FACC15?style=for-the-badge&logo=linux&logoColor=white&labelColor=1F1638)](https://github.com/lam3y35/sensory-overload-godot/releases/latest/download/SensoryOverload-Linux-x64.tar.gz)
-[![60s Trailer](https://img.shields.io/badge/🎬_WATCH-60s_Gameplay_Trailer_(MP4)-38BDF8?style=for-the-badge)](https://github.com/lam3y35/sensory-overload-godot/releases/latest/download/SensoryOverload_60s_Trailer.mp4)
+[![Download Windows x64](https://img.shields.io/badge/⬇_ONE--CLICK_DOWNLOAD-Windows_x64_(ZIP)-FF9F1C?style=for-the-badge&logo=windows&logoColor=0A0B0F&labelColor=0A0B0F)](https://github.com/lam3y35/sensory-overload-godot/releases/latest/download/SensoryOverload-v4.0.0-Windows-x64.zip)
+[![Download Linux x64](https://img.shields.io/badge/Download-Linux_x64_(ZIP)-FF1E3C?style=for-the-badge&logo=linux&logoColor=white&labelColor=0A0B0F)](https://github.com/lam3y35/sensory-overload-godot/releases/latest/download/SensoryOverload-v4.0.0-Linux-x64.zip)
+[![60s Trailer](https://img.shields.io/badge/🎬_WATCH-60s_Gameplay_Trailer_(MP4)-38BDF8?style=for-the-badge&labelColor=0A0B0F)](https://github.com/lam3y35/sensory-overload-godot/releases/latest/download/SensoryOverload_60s_Trailer.mp4)
 
-An independent, clean-room **Godot 4 + GDScript** reconstruction of high-speed 3D voxel-tunnel arcade gameplay, built with **100% original source code, Early-Z opaque + glow GLSL shaders, procedural cyber-synthwave audio, Hyper-Boost, Phase Blink / Parry mechanics, collectible Energy Rings, and handcrafted campaign stages**.
+An independent, clean-room **Godot 4 + GDScript** reconstruction of *Sensory Overload*'s high-velocity 3D voxel-tunnel dropper gameplay, rebuilt from the ground up in **`v4.0.0`** with **carved axis-aligned 3D voxel shafts, analytical wall-sconce & headlamp lighting, translucent pixelated-voxel crystalline obstacles with physical-meter glowing rims, a stark brutalist commercial HUD, and a studio-mastered 44.1 kHz stereo Hard-Techno / Industrial OST**.
 
 ---
 
 ## Play in One Click (No Godot Install Required)
 
-1. Click **[⬇ ONE-CLICK DOWNLOAD (Windows x64 ZIP)](https://github.com/lam3y35/sensory-overload-godot/releases/latest/download/SensoryOverload-Windows-x64.zip)** *(or grab the direct standalone [`SensoryOverload-Windows-x64.exe`](https://github.com/lam3y35/sensory-overload-godot/releases/latest/download/SensoryOverload-Windows-x64.exe), [`SensoryOverload-Linux-x64.tar.gz`](https://github.com/lam3y35/sensory-overload-godot/releases/latest/download/SensoryOverload-Linux-x64.tar.gz), or download the **[60s Gameplay Trailer (`SensoryOverload_60s_Trailer.mp4`)](https://github.com/lam3y35/sensory-overload-godot/releases/latest/download/SensoryOverload_60s_Trailer.mp4)**)*.
-2. Extract (if using the ZIP/tar.gz) and run **`SensoryOverload.exe`**.
-3. **No Vulkan GPU?** Run with OpenGL 3.3 Compatibility mode:
+1. Click **[⬇ ONE-CLICK DOWNLOAD (`SensoryOverload-v4.0.0-Windows-x64.zip`)](https://github.com/lam3y35/sensory-overload-godot/releases/latest/download/SensoryOverload-v4.0.0-Windows-x64.zip)** *(or **[`SensoryOverload-v4.0.0-Linux-x64.zip`](https://github.com/lam3y35/sensory-overload-godot/releases/latest/download/SensoryOverload-v4.0.0-Linux-x64.zip)**, or watch the **[60s Gameplay Trailer (`SensoryOverload_60s_Trailer.mp4`)](https://github.com/lam3y35/sensory-overload-godot/releases/latest/download/SensoryOverload_60s_Trailer.mp4)**)*.
+2. Extract and launch **`SensoryOverload.exe`**.
+3. **Older GPU or Non-Vulkan System?** Run with OpenGL 3.3 Compatibility mode (`62+ FPS` verified):
    ```powershell
    SensoryOverload.exe --rendering-driver opengl3
    ```
 
 ---
 
-## Screenshots (`v3.0.0` Live GPU Captures)
+## Screenshots (`v4.0.0` Live GPU Captures)
 
-| Main Menu (1-Click Quick Dive) | Tunnel Descent & Energy Rings |
+| Live 3D Voxel Tunnel Main Menu | Carved Voxel Shaft & Translucent Waffle |
 | :---: | :---: |
 | ![Main Menu](docs/screenshots/01_main_menu.png) | ![Normal Gameplay](docs/screenshots/05_normal_gameplay.png) |
 
-| Overdrive Boost, Milestones & Phase Diamond | Sensory Overload FX (60 FPS Locked) |
+| Brutalist HUD, Top Chevron & Near-Miss Feed | 24-Bit Shader Mutators & Speed Streaks |
 | :---: | :---: |
 | ![Graze and Flow](docs/screenshots/06_graze_and_flow.png) | ![Sensory Overload FX](docs/screenshots/10_sensory_overload_fx.png) |
 
-| Built-in 3D Level Editor |
-| :---: |
-| ![Level Editor](docs/screenshots/14_level_editor.png) |
+| All Hallows' Level 7 (`96 CUBES/S`) | Built-In 3D Voxel Level Editor |
+| :---: | :---: |
+| ![All Hallows](docs/screenshots/13_all_hallows.png) | ![Level Editor](docs/screenshots/14_level_editor.png) |
 
 ---
 
-## Key Features (`v3.0.0` Performance + Joy Overhaul)
+## What's New in `v4.0.0` (Ground-Up Visual, Audio & Brutalist UI Overhaul)
 
-- **High-FPS Early-Z Architecture:** Hardware opaque Early-Z obstacle shader (`obstacle_opaque.gdshader`), pooled recycled obstacle meshes (zero runtime `queue_free`/`new` churn), 64× faster modulo ring-buffer tunnel updates, 1-draw-call MultiMesh Energy Rings, idle full-screen copy skip in `EffectCompositor`, and decoupled 120 Hz logic sub-stepping + once-per-frame GPU sync (`~1.05 ms/frame` CPU render time at `1920x1080`, `60.0 FPS` steady in full 10-FX chaos).
-- **Phase Blink & Phase Parry (`Right Click` / `E`):** Invulnerability micro-dash across tight obstacle gaps; timing a blink straight through a deadly hazard triggers a **`26 ms` hit-stop**, **PHASE PARRY! (`+800 * Chain`)** callout, spark burst, crystalline harmonic chime, and **instant cooldown reset** — also refreshed instantly on Energy Ring pickups & Death Wish grazes.
-- **Active Hyper-Boost & 3D Speed Streaks (`Hold Left Click` / `Shift` / `Space`):** Surge speed `1.48x` (up to `155 m/s`), double distance scoring, expand peripheral FOV, and ignite golden 3D MultiMesh speed-streak needles.
-- **Collectible Energy Rings:** Glowing 12-segment gold-cyan hoops threaded along safe corridors award `+300 * Chain` pts, build Flow toward **Overdrive Color Lock**, trigger rising pitch-scaled synth chimes, and refresh Phase Blink.
-- **Crisp Dark-Cyber Visuals & Zero Glitches:** Non-coplanar Z-fighting fixes, smooth distance depth cueing & far fade-in (`168 m -> 128 m`), seamless kaleidoscope polar blending, crimson-orange impact alerts, and roll-compensated Mouse/Keyboard/Gamepad steering with zero double-integration drift.
-- **10 Dynamic 3D Obstacle Archetypes & 5 Playable Modes:** Normal Campaign (`21` stages / `7` tiers + `▶ PLAY NOW` Quick Dive), Practice (`C`/`X` Checkpoints), Zen, Ranked Endless (`WATCH` 60 Hz Replays + leaderboards), and All Hallows'.
-- **Warm 8-Beat Cyber-Synthwave Audio & Built-In 3D Editor:** Procedurally synthesized BPM-synced music + Menu Ambient + visual level authoring with `Play From Here`.
+- **Carved Axis-Aligned 3D Voxel Tunnel & Analytical Sconce Lighting:** Rebuilt the tunnel shaft into a `46`-ring × `48`-cell (`2,208`-instance) zero-overlap carved voxel grid with terraced radial depth relief, glowing white emissive wall-sconce blocks (`5` pairs every `28.8 m`), and fast vertex-evaluated analytical dual-sconce + player-headlamp 3D lighting (`voxel_tunnel.gdshader`).
+- **Translucent Pixelated-Voxel Obstacles (`0.78` Alpha) with Physical-Meter Rims:** All 10 obstacle archetypes (`waffle`, `cross_bars`, `iris_ring`, `sliding_blades`, `pendulum`, `tumbling_cube`, `guillotine`, `drifting_ghost`, `spiral_slats`, `pillar_grid`) now render with world-space `0.72 m` pixelated voxel face texture, uniform physical-meter glowing edges (`u_half_extents`), and translucent glass bodies so upcoming obstacles remain readable through foreground barriers.
+- **Stark Brutalist Commercial UI & Unobstructed HUD:** Bundled SIL OFL display typography (`RussoOne-Regular`, `ChakraPetch-Bold`, `ChakraPetch-BoldItalic`, `ChakraPetch-SemiBold`), carbon `#0A0B0F` panels with sharp `2px` corners and amber `#FF9F1C` / crimson `#FF1E3C` left-edge accents, bare top-left vector star + score, top-right vector lightning bolt + `CUBES/S` speed readout, custom top-center `V`-chevron `X1`..`X8` multiplier + split horizontal progress bar, and a middle-right stacking Near-Miss feed.
+- **Live Infinite 3D Main Menu Backdrop:** Left-aligned chromatic-shadow `SENSORY OVERLOAD` title and brutalist navigation column floating directly over a live descending 3D voxel tunnel with drifting translucent obstacles.
+- **Studio-Mastered 44.1 kHz Stereo Hard-Techno OST & Foley SFX:** Replaced procedural mono sine loops with **7 studio-mastered 44.1 kHz stereo `.ogg` tracks** (`128..152 BPM`, arranged with Berlin rumble kicks, PolyBLEP TB-303 resonant `LadderFilter` acid basslines, 909 industrial percussion, supersaw rave stabs, and `-0.8 dB` mastering limiter via Spotify `pedalboard`) plus **15 stereo 44.1 kHz `.wav` foley SFX cues**.
+- **21 Art-Directed Campaign Stages Across 7 Levels:** Curated high-contrast tunnel and obstacle palettes (`54..96 CUBES/S`), 24-bit shader mutator combinations, Practice Mode checkpoints (`C`/`X`), Zen Mode, Ranked Endless with 60 Hz deterministic replays (`WATCH`), All Hallows' mode, and a built-in 3D Level Editor.
 
 ---
 
@@ -52,11 +50,11 @@ An independent, clean-room **Godot 4 + GDScript** reconstruction of high-speed 3
 
 | Input | Action |
 | :--- | :--- |
-| **Mouse** (or **WASD** / **Arrow Keys**) | Steer laterally inside the 3D voxel tunnel (roll-compensated) |
-| **Hold Left Click** / **Shift** / **Space** | **Hyper-Boost** (`1.48x` speed + `2x` distance score + Flow gain) |
-| **Right Click** / **E** | **Phase Blink & Parry** (invulnerability dash; blink through hazards to Parry `+800x` & reset cooldown) |
+| **Mouse** (or **WASD** / **Arrow Keys**) | Steer laterally inside the 3D voxel shaft (roll-compensated) |
+| **Hold Left Click** / **Shift** / **Space** | **Overdrive Boost** (`1.48x` speed + `2x` distance score + Flow gain) |
+| **Right Click** / **E** | **Phase Dash & Parry** (invulnerability blink; dash through barriers to Parry `+800x` & reset cooldown) |
 | **C** / **X** | Place / Clear Checkpoint *(Practice Mode)* |
-| **R** / **Space** *(on Death)* | Instant Retry |
+| **R** / **Space** *(on Death)* | Instant `<0.1s` Retry |
 | **Enter** / **Space** *(on Clear)* | Launch Next Campaign Stage |
 | **Esc** / **P** | Pause / Resume |
 
@@ -70,17 +68,17 @@ Requires **Godot 4.7.2+** (`godot` / `godot_console`) and **Python 3.10+**:
 # 1. Static integrity & schema validation
 python tools/validate_godot_project.py
 
-# 2. Run headless unit & integration suites (6 suites, 106 assertions)
+# 2. Run headless unit & integration suites (6 suites, 123 assertions)
 godot_console --headless --path . res://tests/test_runner.tscn
 
 # 3. Launch the game in Godot
 godot --path .
 ```
 
-See [`docs/QA_REPORT.md`](docs/QA_REPORT.md) for the complete QA findings, `v2.0.0`/`v3.0.0` verification metrics, and [`docs/GAME_DESIGN_DOCUMENT.md`](docs/GAME_DESIGN_DOCUMENT.md) for architecture details.
+See [`docs/QA_REPORT.md`](docs/QA_REPORT.md) for QA verification metrics and [`docs/GAME_DESIGN_DOCUMENT.md`](docs/GAME_DESIGN_DOCUMENT.md) for architecture details.
 
 ---
 
 ## Clean-Room & License Notice
 
-This project is an independent clean-room reconstruction written entirely from scratch in GDScript and Godot GLSL shaders, informed solely by public store materials and structural reverse-engineering documentation. It contains **zero** proprietary source code, binaries, textures, audio, or copyrighted assets. Licensed under the [MIT License](LICENSE).
+This project is an independent clean-room reconstruction written from scratch in GDScript and Godot GLSL shaders, informed solely by public store materials and structural reverse-engineering documentation. It contains **zero** proprietary source code, binaries, textures, audio, or copyrighted assets. Fonts (`Russo One`, `Chakra Petch`) are licensed under the SIL Open Font License 1.1; code and original assets are licensed under the [MIT License](LICENSE).

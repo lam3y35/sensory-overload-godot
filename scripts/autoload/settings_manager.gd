@@ -25,16 +25,16 @@ var input_mode: int = InputMode.HYBRID_MOUSE_AND_KEYS
 var invert_y: bool = false
 
 # Accessibility & Readability
-var obstacle_opacity: float = 1.00
-var outline_brightness: float = 1.15
-var outline_thickness: float = 0.35
+var obstacle_opacity: float = 0.78
+var outline_brightness: float = 1.28
+var outline_thickness: float = 0.42
 var speed_lines_enabled: bool = true
 var safe_photosensitivity_mode: bool = false
 var camera_comfort: bool = false
 
 # Crosshair
 var crosshair_shape: int = CrosshairShape.OUTLINED_PLUS
-var crosshair_color: Color = Color("14f1d9")
+var crosshair_color: Color = Color("ffffff")
 var crosshair_size: float = 1.0
 var crosshair_thickness: float = 2.0
 
@@ -68,14 +68,14 @@ func reset_defaults() -> void:
 	mouse_sensitivity = 1.00
 	input_mode = InputMode.HYBRID_MOUSE_AND_KEYS
 	invert_y = false
-	obstacle_opacity = 1.00
-	outline_brightness = 1.15
-	outline_thickness = 0.35
+	obstacle_opacity = 0.78
+	outline_brightness = 1.28
+	outline_thickness = 0.42
 	speed_lines_enabled = true
 	safe_photosensitivity_mode = false
 	camera_comfort = false
 	crosshair_shape = CrosshairShape.OUTLINED_PLUS
-	crosshair_color = Color("14f1d9")
+	crosshair_color = Color("ffffff")
 	crosshair_size = 1.0
 	crosshair_thickness = 2.0
 	master_volume = 0.85
@@ -148,15 +148,15 @@ func load_settings() -> void:
 	input_mode = clampi(int(cfg.get_value("controls", "input_mode", InputMode.HYBRID_MOUSE_AND_KEYS)), 0, 3)
 	invert_y = bool(cfg.get_value("controls", "invert_y", false))
 
-	set_obstacle_opacity(float(cfg.get_value("accessibility", "obstacle_opacity", 1.00)))
-	set_outline_brightness(float(cfg.get_value("accessibility", "outline_brightness", 1.15)))
-	set_outline_thickness(float(cfg.get_value("accessibility", "outline_thickness", 0.35)))
+	set_obstacle_opacity(float(cfg.get_value("accessibility", "obstacle_opacity", 0.78)))
+	set_outline_brightness(float(cfg.get_value("accessibility", "outline_brightness", 1.28)))
+	set_outline_thickness(float(cfg.get_value("accessibility", "outline_thickness", 0.42)))
 	speed_lines_enabled = bool(cfg.get_value("accessibility", "speed_lines_enabled", true))
 	safe_photosensitivity_mode = bool(cfg.get_value("accessibility", "safe_photosensitivity_mode", false))
 	camera_comfort = bool(cfg.get_value("accessibility", "camera_comfort", false))
 
 	crosshair_shape = clampi(int(cfg.get_value("crosshair", "shape", CrosshairShape.OUTLINED_PLUS)), 0, 3)
-	crosshair_color = Color.from_string(str(cfg.get_value("crosshair", "color", "#14f1d9")), Color("14f1d9"))
+	crosshair_color = Color.from_string(str(cfg.get_value("crosshair", "color", "#ffffff")), Color("ffffff"))
 	crosshair_size = clampf(float(cfg.get_value("crosshair", "size", 1.0)), 0.5, 2.5)
 	crosshair_thickness = clampf(float(cfg.get_value("crosshair", "thickness", 2.0)), 1.0, 6.0)
 

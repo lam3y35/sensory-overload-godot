@@ -406,9 +406,7 @@ func _build_ui() -> void:
 
 	var we := WorldEnvironment.new()
 	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color("0d051a")
-	env.glow_enabled = true
+	TunnelRenderer.apply_cinema_environment(env, Color("070410"))
 	we.environment = env
 	_viewport.add_child(we)
 

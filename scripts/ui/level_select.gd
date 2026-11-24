@@ -41,7 +41,7 @@ func _reload_stage_list() -> void:
 		var unlocked := _is_community_tab or SaveManager.is_stage_unlocked(st.id) or _selected_mode == ScoringManager.MODE_ZEN
 		var cleared := SaveManager.cleared_stage_ids.has(st.id)
 		var tag := "[CLEAR]" if cleared else ("[OPEN]" if unlocked else "[LOCKED]")
-		_stage_list.add_item("%s %s — %s (%.0f m/s)" % [tag, st.stage_code, st.title, st.base_speed])
+		_stage_list.add_item("%s %s — %s (%.0f CUBES/S)" % [tag, st.stage_code, st.title, st.base_speed])
 
 	if not _stages.is_empty():
 		_stage_list.select(0)
@@ -55,9 +55,9 @@ func _select_index(idx: int) -> void:
 	_preview_vp.set_stage(_selected_stage)
 
 	var fx_count := EffectCatalog.count_effects(_selected_stage.combined_effect_mask())
-	_info_lbl.text = "%s\n%s  |  BPM: %.0f  |  Speed: %.0f m/s  |  Length: %.0fm  |  %d Obstacles  |  %d FX bits" % [
-		_selected_stage.level_title,
-		_selected_stage.title,
+	_info_lbl.text = "%s  //  %s\n%.0f BPM  |  %.0f CUBES/S  |  %.0fm  |  %d OBSTACLES  |  %d FX" % [
+		_selected_stage.level_title.to_upper(),
+		_selected_stage.title.to_upper(),
 		_selected_stage.bpm,
 		_selected_stage.base_speed,
 		_selected_stage.total_length(),
@@ -132,7 +132,7 @@ func _launch_selected() -> void:
 
 func _build_ui() -> void:
 	var dim := ColorRect.new()
-	dim.color = Color(0.03, 0.015, 0.08, 0.96)
+	dim.color = Color(0.025, 0.028, 0.042, 0.96)
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(dim)
 
@@ -195,7 +195,8 @@ func _build_ui() -> void:
 	right.add_child(_info_lbl)
 
 	_stats_lbl = Label.new()
-	_stats_lbl.modulate = Color("14f1d9")
+	_stats_lbl.modulate = Color("ff9f1c")
+	_stats_lbl.add_theme_font_override("font", UITheme.font_bold())
 	right.add_child(_stats_lbl)
 
 	# Mode selector

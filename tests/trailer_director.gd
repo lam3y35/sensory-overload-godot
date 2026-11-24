@@ -123,7 +123,7 @@ func _enter_beat(stage_code: int) -> void:
 		4:
 			# 0:40-0:43 Escalation cut 3: Level 6 Kaleidoscope Overdrive
 			_ensure_game_session()
-			_gs.start_session({"stage_id": "06_c", "mode": ScoringManager.MODE_ZEN, "start_depth": 220.0})
+			_gs.start_session({"stage_id": "06_c", "mode": ScoringManager.MODE_ZEN, "start_depth": 180.0})
 			_gs.boost_override = 1
 			_gs.scoring.flow_meter = 1.0
 			_set_hud_visible(true)
@@ -268,6 +268,7 @@ func _ensure_game_session() -> void:
 		return
 	var gs_scene := load("res://scenes/game_session.tscn") as PackedScene
 	_gs = gs_scene.instantiate() as GameSession
+	_gs.suppress_stage_clear = true
 	add_child(_gs)
 
 

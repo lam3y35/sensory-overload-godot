@@ -12,6 +12,7 @@ var _failed := 0
 func run_suite(runner: Node) -> Dictionary:
 	_test_effect_compositor_and_safe_mode(runner)
 	_test_procedural_audio_zero_crossing_and_fsm()
+	_test_mastered_audio_assets_and_fonts_load()
 	_test_replay_roundtrip_and_watch(runner)
 	return {"passed": _passed, "failed": _failed}
 
@@ -79,6 +80,22 @@ func _test_procedural_audio_zero_crossing_and_fsm() -> void:
 	_assert_true(not AudioSyncManager.is_paused and AudioSyncManager.current_track_index == 2,
 		"AudioSyncManager resumes without changing track when restart_song_on_death=false")
 	AudioSyncManager.stop_music()
+
+
+func _test_mastered_audio_assets_and_fonts_load() -> void:
+	for i in range(AudioSyncManager.TRACK_RESOURCE_PATHS.size()):
+		var p := AudioSyncManager.TRACK_RESOURCE_PATHS[i]
+		var loaded := ResourceLoader.load(p)
+		_assert_true(loaded is AudioStream, "Mastered OST OGG track %d loads as AudioStream (%s)" % [i + 1, p])
+
+	for cue in ["graze_1", "graze_3", "phase_parry", "death", "clear", "ui_click"]:
+		var sp := str(AudioSyncManager.SFX_RESOURCE_PATHS[cue])
+		var sfx := ResourceLoader.load(sp)
+		_assert_true(sfx is AudioStream, "Mastered stereo WAV SFX '%s' loads cleanly" % cue)
+
+	for fp in [UITheme.FONT_DISPLAY_PATH, UITheme.FONT_BOLD_PATH, UITheme.FONT_ITALIC_PATH, UITheme.FONT_REGULAR_PATH]:
+		var fnt := ResourceLoader.load(fp)
+		_assert_true(fnt is Font, "Bundled OFL font loads cleanly (%s)" % fp)
 
 
 func _test_replay_roundtrip_and_watch(runner: Node) -> void:

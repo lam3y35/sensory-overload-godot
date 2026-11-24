@@ -1,30 +1,57 @@
 extends Node
-## Procedural cyber-synthwave AudioStreamWAV synthesizer, BPM/FFT music sync,
-## pitch-scaled SFX cues, Menu Ambient mode, and Pause/Restart-on-Death FSM.
-## [INDEPENDENT IMPLEMENTATION] Generates zero-crossing seamless loops with no external audio files.
+## Studio-mastered 44.1 kHz stereo OGG hard-techno / industrial OST + WAV foley SFX manager,
+## with procedural WAV fallback, BPM/FFT music sync, Menu Ambient mode, and Pause/Restart-on-Death FSM.
 
 const SAMPLE_RATE := 22050
 const LOOP_BEATS := 8
 
-const TRACK_TEMPOS: Array[float] = [124.0, 128.0, 134.0, 138.0, 142.0, 148.0, 152.0]
+const TRACK_TEMPOS: Array[float] = [128.0, 132.0, 136.0, 140.0, 144.0, 148.0, 152.0]
 const TRACK_TITLES: PackedStringArray = [
-	"01 — Threshold Pulse (124 BPM)",
-	"02 — Spiral Drift (128 BPM)",
-	"03 — Vortex Engine (134 BPM)",
-	"04 — Deep Channel (138 BPM)",
-	"05 — Whiteout Glitch (142 BPM)",
-	"06 — Terminal Descent (148 BPM)",
+	"01 — Threshold Pulse (128 BPM)",
+	"02 — Spiral Drift (132 BPM)",
+	"03 — Vortex Engine (136 BPM)",
+	"04 — Deep Channel (140 BPM)",
+	"05 — Whiteout Rave (144 BPM)",
+	"06 — Sensory Overload (148 BPM)",
 	"07 — Midnight Overdrive (152 BPM)",
 ]
 
+const TRACK_RESOURCE_PATHS: PackedStringArray = [
+	"res://assets/audio/music/track_01.ogg",
+	"res://assets/audio/music/track_02.ogg",
+	"res://assets/audio/music/track_03.ogg",
+	"res://assets/audio/music/track_04.ogg",
+	"res://assets/audio/music/track_05.ogg",
+	"res://assets/audio/music/track_06.ogg",
+	"res://assets/audio/music/track_07.ogg",
+]
+
+const SFX_RESOURCE_PATHS: Dictionary = {
+	"graze_1": "res://assets/audio/sfx/graze_1.wav",
+	"graze_2": "res://assets/audio/sfx/graze_2.wav",
+	"graze_3": "res://assets/audio/sfx/graze_3.wav",
+	"ring": "res://assets/audio/sfx/ring.wav",
+	"flow_lock": "res://assets/audio/sfx/flow_lock.wav",
+	"boost_on": "res://assets/audio/sfx/boost_on.wav",
+	"phase_dash": "res://assets/audio/sfx/phase_dash.wav",
+	"phase_parry": "res://assets/audio/sfx/phase_parry.wav",
+	"section_up": "res://assets/audio/sfx/section_up.wav",
+	"whoosh": "res://assets/audio/sfx/whoosh.wav",
+	"checkpoint": "res://assets/audio/sfx/checkpoint.wav",
+	"clear": "res://assets/audio/sfx/clear.wav",
+	"death": "res://assets/audio/sfx/death.wav",
+	"ui_click": "res://assets/audio/sfx/ui_click.wav",
+	"ui_hover": "res://assets/audio/sfx/ui_hover.wav",
+}
+
 const SCALE_NOTES_HZ: Array[Array] = [
-	[110.0, 130.81, 146.83, 164.81, 196.0, 220.0], # A minor
-	[98.0, 116.54, 130.81, 146.83, 174.61, 196.0], # G minor
-	[123.47, 146.83, 164.81, 185.0, 220.0, 246.94], # B minor
-	[130.81, 155.56, 174.61, 196.0, 233.08, 261.63], # C minor
-	[87.31, 103.83, 116.54, 130.81, 155.56, 174.61], # F minor
-	[110.0, 116.54, 146.83, 164.81, 174.61, 220.0], # A Phrygian industrial
-	[103.83, 123.47, 138.59, 155.56, 185.0, 207.65], # G# minor
+	[92.50, 110.0, 123.47, 138.59, 164.81, 185.0], # F# minor
+	[110.0, 123.47, 130.81, 164.81, 174.61, 220.0], # A minor
+	[73.42, 77.78, 87.31, 98.0, 110.0, 130.81], # D Phrygian
+	[69.30, 82.41, 92.50, 98.0, 103.83, 123.47], # C# minor
+	[87.31, 98.0, 103.83, 130.81, 155.56, 174.61], # F minor
+	[98.0, 103.83, 123.47, 130.81, 146.83, 174.61], # G Phrygian dominant
+	[82.41, 92.50, 98.0, 123.47, 130.81, 155.56], # E harmonic minor
 ]
 
 const CHORD_RATIOS: Array[float] = [1.0, 0.7937005, 1.189207, 0.8908987] # i -> VI -> III -> VII
@@ -44,6 +71,7 @@ var _sfx_players: Array[AudioStreamPlayer] = []
 var _sfx_cursor: int = 0
 var _spectrum_inst: AudioEffectSpectrumAnalyzerInstance
 var _track_cache: Dictionary = {}
+var _music_ogg_cache: Dictionary = {}
 var _sfx_cache: Dictionary = {}
 var _last_emitted_beat: int = -1
 var _synth_time: float = 0.0
@@ -64,7 +92,7 @@ func _ready() -> void:
 
 
 func _prewarm_initial_track() -> void:
-	get_or_build_track_stream(0, TRACK_TEMPOS[0])
+	_load_mastered_track_stream(0)
 
 
 func _process(delta: float) -> void:
@@ -107,6 +135,36 @@ func start_menu_ambient() -> void:
 	start_track(0, TRACK_TEMPOS[0], not is_playing)
 
 
+func _load_mastered_track_stream(track_idx: int) -> AudioStream:
+	var idx := posmod(track_idx, TRACK_RESOURCE_PATHS.size())
+	if _music_ogg_cache.has(idx):
+		return _music_ogg_cache[idx] as AudioStream
+	var res_path := TRACK_RESOURCE_PATHS[idx]
+	if ResourceLoader.exists(res_path):
+		var st := ResourceLoader.load(res_path) as AudioStream
+		if st != null:
+			if "loop" in st:
+				st.set("loop", true)
+			elif st.has_method("set_loop"):
+				st.call("set_loop", true)
+			_music_ogg_cache[idx] = st
+			return st
+	return null
+
+
+func _load_sfx_stream(cue_name: String) -> AudioStream:
+	if _sfx_cache.has(cue_name):
+		return _sfx_cache[cue_name] as AudioStream
+	if SFX_RESOURCE_PATHS.has(cue_name):
+		var res_path := str(SFX_RESOURCE_PATHS[cue_name])
+		if ResourceLoader.exists(res_path):
+			var st := ResourceLoader.load(res_path) as AudioStream
+			if st != null:
+				_sfx_cache[cue_name] = st
+				return st
+	return get_or_build_sfx_stream(cue_name)
+
+
 func start_track(track_idx: int, bpm_override: float = -1.0, force_restart: bool = true) -> void:
 	var idx := posmod(track_idx, TRACK_TEMPOS.size())
 	var bpm_val := bpm_override if bpm_override > 0.0 else TRACK_TEMPOS[idx]
@@ -125,7 +183,9 @@ func start_track(track_idx: int, bpm_override: float = -1.0, force_restart: bool
 	is_playing = true
 	is_paused = false
 
-	var stream := get_or_build_track_stream(idx, bpm_val)
+	var stream: AudioStream = _load_mastered_track_stream(idx)
+	if stream == null:
+		stream = get_or_build_track_stream(idx, bpm_val)
 	if _music_player != null:
 		_music_player.stream = stream
 		_music_player.stream_paused = false
@@ -169,7 +229,7 @@ func stop_music() -> void:
 func play_sfx(cue_name: String, pitch_scale: float = 1.0) -> void:
 	if DisplayServer.get_name() == "headless":
 		return
-	var stream := get_or_build_sfx_stream(cue_name)
+	var stream := _load_sfx_stream(cue_name)
 	if stream == null or _sfx_players.is_empty():
 		return
 	var p := _sfx_players[_sfx_cursor]

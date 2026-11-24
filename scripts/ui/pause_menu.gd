@@ -40,7 +40,7 @@ func _build_ui() -> void:
 	add_child(_modal_root)
 
 	var scrim := ColorRect.new()
-	scrim.color = Color(0.02, 0.01, 0.05, 0.62)
+	scrim.color = Color(0.02, 0.022, 0.035, 0.68)
 	scrim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_modal_root.add_child(scrim)
 
@@ -66,12 +66,12 @@ func _build_ui() -> void:
 	var hdr := Label.new()
 	hdr.text = "PAUSED"
 	hdr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hdr.add_theme_font_size_override("font_size", 28)
+	UITheme.style_display_label(hdr, 28, true)
 	vbox.add_child(hdr)
 
 	_track_lbl = Label.new()
 	_track_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_track_lbl.modulate = Color("14f1d9")
+	_track_lbl.modulate = Color("ff9f1c")
 	vbox.add_child(_track_lbl)
 
 	var resume_btn := Button.new(); resume_btn.text = "Resume (Esc)"

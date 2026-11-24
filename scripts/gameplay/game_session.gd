@@ -47,6 +47,7 @@ var spawn_grace_timer: float = 0.0
 var in_autopilot: bool = false
 var boost_level: float = 0.0
 var boost_override: int = -1 # -1 = read input, 0 = force off, 1 = force on
+var suppress_stage_clear: bool = false
 var flash_strength: float = 0.0
 var flash_color: Color = Color("14f1d9")
 
@@ -85,11 +86,7 @@ func _build_3d_environment() -> void:
 	if world_env == null:
 		world_env = WorldEnvironment.new()
 		var env := Environment.new()
-		env.background_mode = Environment.BG_COLOR
-		env.background_color = Color("070312")
-		env.glow_enabled = true
-		env.glow_intensity = 0.72
-		env.glow_bloom = 0.16
+		TunnelRenderer.apply_cinema_environment(env, Color("070410"))
 		world_env.environment = env
 		add_child(world_env)
 
@@ -160,7 +157,7 @@ func start_session(params: Dictionary, keep_practice_checkpoint: bool = false) -
 			stage = LevelRepository.get_campaign_stages()[0].duplicate_stage()
 
 	if world_env != null and world_env.environment != null and stage.palette.size() > 2:
-		world_env.environment.background_color = stage.palette[2]
+		TunnelRenderer.apply_cinema_environment(world_env.environment, stage.palette[2])
 
 	var run_mode := str(params.get("mode", ScoringManager.MODE_NORMAL))
 	_return_to_editor = bool(params.get("return_to_editor", false))
@@ -371,7 +368,7 @@ func step_simulation(delta: float, sync_visuals: bool = true) -> void:
 	if sync_visuals:
 		sync_visual_frame(delta)
 
-	if state == SessionState.PLAYING and new_depth >= stage.total_length():
+	if state == SessionState.PLAYING and not suppress_stage_clear and new_depth >= stage.total_length():
 		_handle_stage_end()
 
 

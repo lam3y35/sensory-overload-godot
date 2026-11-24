@@ -1,7 +1,7 @@
 class_name CrosshairDrawer
 extends Control
-## Precision eye-centered cyber-HUD reticle displaying live Flow Lock arc,
-## Boost/Chain crescent, cockpit tunnel-margin indicator, and Phase Dash diamond readiness.
+## Clean precision dropper crosshair with ultra-subtle micro Phase-Blink & Flow cues,
+## leaving the central flight sightline unobstructed.
 
 var preview_mode: bool = false
 var show_telemetry: bool = false
@@ -48,79 +48,47 @@ func update_telemetry(
 func _draw() -> void:
 	var c := size * 0.5
 	var col := SettingsManager.crosshair_color
-	var sz := SettingsManager.crosshair_size * (1.0 + boost_ratio * 0.14 + beat_kick * 0.06)
+	var sz := SettingsManager.crosshair_size * (1.0 + boost_ratio * 0.10 + beat_kick * 0.04)
 	var th := SettingsManager.crosshair_thickness
 	var shape := SettingsManager.crosshair_shape
 
 	if show_telemetry and not preview_mode:
-		var arc_r := 28.0 + boost_ratio * 4.5 + beat_kick * 1.5
-		# Subtle tunnel clearance boundary circle + cockpit position dot
-		draw_arc(c, arc_r, 0.0, TAU, 40, Color(0.75, 0.88, 1.0, 0.14), 1.4)
-		var dot_pos := c + tunnel_pos_norm.limit_length(1.0) * (arc_r - 6.0)
-		var dot_col := Color("facc15") if boost_ratio > 0.25 else Color("14f1d9")
-		draw_circle(dot_pos, 3.0, Color(0.0, 0.0, 0.0, 0.75))
-		draw_circle(dot_pos, 2.1, dot_col)
-
-		# Right crescent: Flow Meter (Cyan -> blazing Gold when Color Locked)
-		var flow_bg := Color(0.05, 0.04, 0.12, 0.55)
-		draw_arc(c, arc_r, -0.78, 0.78, 18, flow_bg, 4.2)
-		if flow_ratio > 0.01:
-			var f_col := Color("facc15") if flow_locked else Color("14f1d9")
-			draw_arc(c, arc_r, -0.78, lerpf(-0.78, 0.78, flow_ratio), 18, f_col, 2.8)
-
-		# Left crescent: Boost / Chain Timer Meter
-		draw_arc(c, arc_r, PI - 0.78, PI + 0.78, 18, flow_bg, 4.2)
-		var left_fill := maxf(boost_ratio, chain_ratio)
-		if left_fill > 0.01:
-			var b_col := Color("facc15") if boost_ratio > 0.15 else Color("ff2e93")
-			draw_arc(c, arc_r, PI + 0.78, lerpf(PI + 0.78, PI - 0.78, left_fill), 18, b_col, 2.8)
-
-		# Bottom Phase Dash diamond readiness gauge
-		var dp := c + Vector2(0.0, arc_r + 10.0)
-		var dr := 5.2 + (2.0 if phase_active else (1.0 * beat_kick if phase_ready_ratio >= 0.99 else 0.0))
-		var pts := PackedVector2Array([
-			dp + Vector2(0.0, -dr),
-			dp + Vector2(dr, 0.0),
-			dp + Vector2(0.0, dr),
-			dp + Vector2(-dr, 0.0),
-		])
+		# Subtle slim Phase Blink readiness arc only while recharging or firing (keeps center minimal!)
+		var dp := c + Vector2(0.0, 22.0 * sz)
 		if phase_active:
-			draw_colored_polygon(pts, Color("facc15"))
-			draw_polyline(PackedVector2Array([pts[0], pts[1], pts[2], pts[3], pts[0]]), Color.WHITE, 1.8)
-		elif phase_ready_ratio >= 0.99:
-			draw_colored_polygon(pts, Color("14f1d9"))
-			draw_polyline(PackedVector2Array([pts[0], pts[1], pts[2], pts[3], pts[0]]), Color(0.0, 0.0, 0.0, 0.85), 1.4)
-		else:
-			draw_colored_polygon(pts, Color(0.06, 0.05, 0.14, 0.7))
-			draw_arc(dp, dr + 1.5, -PI * 0.5, -PI * 0.5 + TAU * phase_ready_ratio, 16, Color("38bdf8"), 2.0)
+			draw_circle(dp, 3.2, Color("ff9f1c"))
+		elif phase_ready_ratio < 0.99:
+			draw_arc(dp, 5.0, -PI * 0.5, -PI * 0.5 + TAU * phase_ready_ratio, 14, Color(1.0, 1.0, 1.0, 0.65), 1.6)
+		elif boost_ratio > 0.20:
+			draw_arc(c, 16.0 * sz, 0.0, TAU, 24, Color(1.0, 0.62, 0.11, 0.32 * boost_ratio), 1.5)
 
 	match shape:
 		SettingsManager.CrosshairShape.DOT:
-			draw_circle(c, maxf(2.0, 3.2 * sz), Color(0.0, 0.0, 0.0, 0.75))
-			draw_circle(c, maxf(1.5, 2.2 * sz), col)
+			draw_circle(c, maxf(2.0, 3.0 * sz), Color(0.0, 0.0, 0.0, 0.78))
+			draw_circle(c, maxf(1.4, 2.0 * sz), col)
 
 		SettingsManager.CrosshairShape.CROSS:
-			var arm := 11.0 * sz
-			var gap := 4.0 * sz
+			var arm := 10.0 * sz
+			var gap := 3.5 * sz
 			draw_line(c + Vector2(-arm, 0), c + Vector2(-gap, 0), col, th)
 			draw_line(c + Vector2(gap, 0), c + Vector2(arm, 0), col, th)
 			draw_line(c + Vector2(0, -arm), c + Vector2(0, -gap), col, th)
 			draw_line(c + Vector2(0, gap), c + Vector2(0, arm), col, th)
 
 		SettingsManager.CrosshairShape.RING:
-			var rad := 9.5 * sz
-			draw_arc(c, rad, 0.0, TAU, 36, Color(0.0, 0.0, 0.0, 0.65), th + 2.0)
+			var rad := 9.0 * sz
+			draw_arc(c, rad, 0.0, TAU, 36, Color(0.0, 0.0, 0.0, 0.68), th + 2.0)
 			draw_arc(c, rad, 0.0, TAU, 36, col, th)
-			draw_circle(c, maxf(1.5, th * 0.75), col)
+			draw_circle(c, maxf(1.4, th * 0.7), col)
 
 		SettingsManager.CrosshairShape.OUTLINED_PLUS:
-			var arm := 12.0 * sz
-			var gap := 4.0 * sz
-			var bg := Color(0.0, 0.0, 0.0, 0.85)
-			draw_line(c + Vector2(-arm - 1.0, 0), c + Vector2(-gap + 1.0, 0), bg, th + 2.4)
-			draw_line(c + Vector2(gap - 1.0, 0), c + Vector2(arm + 1.0, 0), bg, th + 2.4)
-			draw_line(c + Vector2(0, -arm - 1.0), c + Vector2(0, -gap + 1.0), bg, th + 2.4)
-			draw_line(c + Vector2(0, gap - 1.0), c + Vector2(0, arm + 1.0), bg, th + 2.4)
+			var arm := 11.0 * sz
+			var gap := 3.5 * sz
+			var bg := Color(0.0, 0.0, 0.0, 0.88)
+			draw_line(c + Vector2(-arm - 1.0, 0), c + Vector2(-gap + 1.0, 0), bg, th + 2.2)
+			draw_line(c + Vector2(gap - 1.0, 0), c + Vector2(arm + 1.0, 0), bg, th + 2.2)
+			draw_line(c + Vector2(0, -arm - 1.0), c + Vector2(0, -gap + 1.0), bg, th + 2.2)
+			draw_line(c + Vector2(0, gap - 1.0), c + Vector2(0, arm + 1.0), bg, th + 2.2)
 			draw_line(c + Vector2(-arm, 0), c + Vector2(-gap, 0), col, th)
 			draw_line(c + Vector2(gap, 0), c + Vector2(arm, 0), col, th)
 			draw_line(c + Vector2(0, -arm), c + Vector2(0, -gap), col, th)
